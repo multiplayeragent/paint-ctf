@@ -1,0 +1,21 @@
+{
+  "name": "Paint CTF",
+  "genre": "shooter",
+  "dim": "3D",
+  "mode": "Versus",
+  "players": "2–10",
+  "hook": "Steal their flag. Paint the arena your color.",
+  "how": "Two teams with paint blasters. Run into the other team's base, grab their flag and carry it to your own stand while your flag is safe at home. Three hits splat you; first team to 3 captures wins.",
+  "controls": "WASD and mouse, click to shoot, Space to jump. On a phone: left thumb moves, drag to look, FIRE shoots",
+  "uses": [
+    ["Leaderboard", "The most points anyone has scored in one match."],
+    ["Host-run rules", "One player's browser decides every flag grab, drop and capture, and keeps the score; if it leaves, the next player takes over."],
+    ["Bots", "Bots fill both teams: some attack, some guard the flag."],
+    ["Live sync", "Every player, paint ball and splat shows up for everyone at once."]
+  ],
+  "ideas": [
+    "Make players run faster on their own team's paint",
+    "Add a paint grenade that splats a whole area",
+    "Move the arena onto a pirate ship deck"
+  ]
+}

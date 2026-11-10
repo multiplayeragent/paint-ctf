@@ -1,0 +1,1158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Paint CTF</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; background: #bfe4ff; }
+  body { font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #fff; user-select: none; -webkit-user-select: none; }
+  canvas { display: block; touch-action: none; }
+  [hidden] { display: none !important; }
+  .hud { position: fixed; pointer-events: none; text-shadow: 0 2px 4px #0008; font-weight: 800; }
+  #score { top: max(10px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); display: flex; gap: 6px; align-items: flex-start; }
+  #score .team { min-width: 104px; padding: 3px 10px 5px; border-radius: 12px; text-align: center; box-shadow: 0 3px 0 #0003; }
+  #score .team b { display: block; font-size: 30px; line-height: 1.05; }
+  #score .team small { display: block; font-size: 11px; font-weight: 700; white-space: nowrap; }
+  #score .team.alert small { animation: blink .6s infinite alternate; }
+  @keyframes blink { to { opacity: .35; } }
+  #score .clock { padding-top: 12px; min-width: 42px; text-align: center; font-size: 15px; }
+  #mine { top: max(12px, env(safe-area-inset-top)); left: 16px; font-size: 14px; line-height: 1.15; }
+  #mine b { display: block; font-size: 30px; }
+  #feed { top: max(12px, env(safe-area-inset-top)); right: 16px; text-align: right; font-size: 13px; }
+  #feed div { margin-bottom: 4px; padding: 2px 8px; border-radius: 8px; background: #0003; }
+  #feed div:last-child { animation: pop .25s ease-out; }
+  @keyframes pop { from { transform: translateX(30px); opacity: 0; } }
+  @media (max-width: 640px) { #mine { display: none; } #feed { font-size: 11px; top: calc(max(10px, env(safe-area-inset-top)) + 72px); } #score .team { min-width: 84px; } }
+  #hp { bottom: calc(max(10px, env(safe-area-inset-bottom)) + 22px); left: 16px; width: 170px; font-size: 24px; }
+  #hp i { display: block; height: 10px; border-radius: 6px; background: #ffffff40; overflow: hidden; margin-top: 2px; }
+  #hp i b { display: block; height: 100%; background: #4ee08a; transition: width .15s; }
+  #cross { left: 50%; top: 50%; width: 26px; height: 26px; margin: -13px 0 0 -13px; border: 2px solid #fff; border-radius: 50%; box-shadow: 0 0 2px #000; transition: transform .1s; }
+  #cross::after { content: ""; position: absolute; left: 10px; top: 10px; width: 6px; height: 6px; border-radius: 50%; background: #fff; }
+  #cross.hit { transform: scale(1.4); border-color: #ff4d6d; }
+  #hurt { inset: 0; opacity: 0; }
+  #toast { top: 22%; left: 0; right: 0; text-align: center; font-size: 40px; letter-spacing: 1px; opacity: 0; transform: scale(.8); transition: opacity .25s, transform .25s; }
+  #toast.on { opacity: 1; transform: scale(1); }
+  #msg { top: 34%; left: 0; right: 0; text-align: center; font-size: 22px; padding: 0 16px; }
+  #help { top: 66%; left: 0; right: 0; text-align: center; font-size: 15px; font-weight: 700; padding: 0 16px; transition: opacity 1s; }
+  #net { bottom: max(10px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); font-size: 12px; font-weight: 600; opacity: .85; white-space: nowrap; }
+  .screen { position: fixed; inset: 0; display: grid; place-items: center; background: #0b1530a0; }
+  .card { width: min(380px, 90vw); max-height: 86vh; overflow: auto; padding: 20px; border-radius: 16px; background: #1a2148; border: 1px solid #ffffff2a; text-align: center; }
+  .card h2 { margin: 0 0 6px; font-size: 24px; }
+  .card h3 { margin: 14px 0 4px; font-size: 14px; color: #ffd23f; text-align: left; }
+  .card ol { margin: 0; padding-left: 24px; font-size: 14px; text-align: left; }
+  .card li span { float: right; font-variant-numeric: tabular-nums; }
+  .card li.me { color: #ffd23f; font-weight: 700; }
+  .card li i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
+  .card p { margin: 10px 0 0; font-size: 13px; opacity: .85; }
+  button.go { width: 100%; min-height: 48px; margin-top: 14px; border: 0; border-radius: 12px; background: #ff7a1a; color: #fff; font: 800 17px system-ui, sans-serif; cursor: pointer; }
+  #touch button { position: fixed; border-radius: 50%; border: 2px solid #ffffff99; background: #00000033; color: #fff; font: 800 14px system-ui, sans-serif; touch-action: none; }
+  #touch button.on { background: #ffffff55; }
+  #fire { right: max(18px, env(safe-area-inset-right)); bottom: max(26px, env(safe-area-inset-bottom)); width: 92px; height: 92px; }
+  #jump { right: calc(max(18px, env(safe-area-inset-right)) + 104px); bottom: max(22px, env(safe-area-inset-bottom)); width: 64px; height: 64px; }
+  #stick { position: fixed; width: 110px; height: 110px; margin: -55px 0 0 -55px; border-radius: 50%; border: 2px solid #ffffff77; background: #0002; pointer-events: none; }
+  #stick i { position: absolute; left: 30px; top: 30px; width: 50px; height: 50px; border-radius: 50%; background: #ffffff88; }
+</style>
+<script src="https://cdn.multiplayeragent.com/sdk/mp.global.js"></script>
+<script type="importmap">{ "imports": { "three": "./libs/three.module.min.js" } }</script>
+</head>
+<body>
+<div class="hud" id="hurt"></div>
+<div class="hud" id="score"></div>
+<div class="hud" id="mine"></div>
+<div class="hud" id="feed"></div>
+<div class="hud" id="hp"></div>
+<div class="hud" id="cross"></div>
+<div class="hud" id="toast"></div>
+<div class="hud" id="msg"></div>
+<div class="hud" id="help"></div>
+<div class="hud" id="net">Connecting…</div>
+<div id="touch" hidden><div id="stick" hidden><i></i></div><button id="jump">JUMP</button><button id="fire">FIRE</button></div>
+<div class="screen" id="start" hidden><div class="card">
+  <h2>Paint CTF</h2><p><span id="how">WASD to move · Space to jump · mouse to aim · click to shoot paint · Esc frees the mouse</span><br>Grab the other team's flag and bring it to your stand. First to <span id="limit"></span> wins.</p>
+  <button class="go" id="play">Click to play</button>
+</div></div>
+<div class="screen" id="over" hidden><div class="card">
+  <h2 id="winner"></h2><ol id="results"></ol>
+  <h3>Most points in one match</h3><ol id="board"><li>Loading…</li></ol>
+  <button class="go" id="again">Play again</button><p id="next"></p>
+</div></div>
+<script type="module">
+/* ═══ PAINT CTF · a Multiplayer Agent starter ════════════════════════════════════════════
+ * Two teams with paint blasters. Grab the other team's flag and bring it home. Versus,
+ * 2–10 players in two teams; bots fill both teams.
+ *
+ * WHERE THINGS ARE (search for the "── " headers):
+ *   CONFIG ........ team size, captures to win, blaster, movement, bots, and the MAP itself
+ *   CONNECTION .... MP_CONNECT, joining, the offline room, who is host
+ *   ARENA ......... blocks, the paintable floor, the flag stands, built from MAP
+ *   PHYSICS ....... walking, jumping and block collisions; ray tests
+ *   FIGHTERS ...... the paint soldier model; everyone else drawn from state
+ *   FLAGS ......... the two flags and their beacons, placed from the match state
+ *   PAINT & FX .... paint balls, splats on the floor and walls, particles, sounds
+ *   MATCH (HOST) .. teams, flags, captures, splats, timer, winner, restart. Only the host writes these.
+ *   BOTS (HOST) ... attackers go for the flag, defenders guard home, everyone shoots. The host runs them.
+ *   ME ............ moving, shooting, getting splatted. Each player writes only its own.
+ *   HUD & RESULTS . score, flag status, kill feed, results card, leaderboard
+ *   INPUT ......... pointer lock + WASD; on touch a move stick, drag to look, FIRE and JUMP
+ *
+ * HOW THE MULTIPLAYER WORKS (a relay room: no server code):
+ *   - Each player writes its OWN entity: `p` (one packed JSON field: position, yaw, pitch,
+ *     alive, health) about 15 times a second, `dth` {m, n, by} when it gets splatted
+ *     (match id, splats so far, by whom), `rdy` (the match it pressed Play again on),
+ *     `hb` (heartbeat) once a second, and `n`/`c` (name, color) once.
+ *   - SHOTS ARE DECIDED BY THE SHOOTER. Your browser flies YOUR paint balls against what
+ *     YOU see and, on a hit, sends "hit" {to, dmg, by}. The victim lowers its own health
+ *     (only it writes its `p`); a hit on a bot goes to the host, which owns the bots.
+ *     "shot" {o, v} lets everyone else fly the same ball, just for the look and the splat.
+ *   - The HOST is the lowest sessionId among live players (heartbeat seen in the last 3s),
+ *     worked out every frame. Only the host writes the shared fields `match` (id, v, phase,
+ *     endsAt, score, teams, both flags, points, kill feed, results) and `bots`.
+ *   - FLAGS ARE HOST-RUN: the host checks every frame where everyone is (players' own `p`,
+ *     its bots) and decides who took, dropped, returned or captured a flag. Nobody sends
+ *     a "grab": walking onto the flag is enough. A new host adopts it all from `match`.
+ *   - The host puts each new player in the team with fewer people (`match.tm`).
+ *   - A new match starts only when the host bumps match.id; every client respawns and
+ *     washes the floor.
+ *   - ?attract plays offline with bots only and a chase camera (the preview video).
+ *   - Leaderboard "ctf-points": your points in one match (capture 5, return 2, splat 1).
+ */
+import * as THREE from "three";
+
+// ── CONFIG ──────────────────────────────────────────────────────────────────────────
+const CONFIG = {
+  teamSize: 4,          // bots fill each team up to this many players (4 v 4)
+  capLimit: 3,          // first team to bring home this many flags wins
+  matchMs: 300000,      // or the team with more captures when time runs out
+  resultsMs: 12000,     // results card time before the next match
+  respawnMs: 3000,      // time splatted before you come back at your stand
+  shieldMs: 1500,       // nobody can paint you this long after you spawn
+  hp: 100,
+  dmg: 34,              // one paint ball; three splat you
+  regenAfterMs: 3500,   // go this long without being hit and your health comes back ...
+  regen: 30,            // ... this much per second
+  fireMs: 170,          // time between shots while the trigger is held
+  ballSpeed: 46,        // paint balls fly in a gentle arc
+  ballGravity: 7,
+  range: 55,
+  spread: 0.012,        // aim wobble (radians)
+  speed: 8,
+  carrySlow: 0.85,      // speed multiplier while you carry a flag
+  jump: 7.4, gravity: 20,
+  look: 0.0022,         // mouse sensitivity (touch uses 2.6x)
+  grabRadius: 1.6,      // how close you must get to take or return a flag
+  capRadius: 2.4,       // how close to your own stand you must bring it
+  flagReturnMs: 12000,  // a dropped flag flies home on its own after this
+  botFireMs: 480,       // time between bot shots (a bit random)
+  botAim: 0.07,         // bot aim error per unit of distance; lower = deadlier
+  botSight: 28,         // how far bots spot an enemy
+  botTurn: 6,           // how fast bots turn (radians/s)
+  points: { cap: 5, ret: 2, splat: 1 }, // your points, for the leaderboard
+  board: "ctf-points",
+};
+const TEAMS = [{ name: "Orange", color: "#ff7a1a" }, { name: "Blue", color: "#2f86ff" }];
+// The LEFT half of the arena (Orange's side), one character per 2x2 cell. The right half is
+// this mirrored, with a→b and A→B, so both sides are always fair.
+// # wall (4 high)  = low wall (2 high)  + crate (1 high, jump on it)  . floor
+// A Orange's flag stand  a an Orange spawn point  (B and b on the mirrored side are Blue's)
+const HALF_MAP = [
+  "################",
+  "#.a......+......",
+  "#........+...=..",
+  "#.==.........=..",
+  "#.....#.........",
+  "#.....#.....+...",
+  "#a..........+...",
+  "#.........=...++",
+  "#..A......=...++",
+  "#.........=...++",
+  "#a..........+...",
+  "#.....#.....+...",
+  "#.....#.........",
+  "#.==.........=..",
+  "#........+...=..",
+  "#.a......+......",
+  "################",
+];
+const MAP = HALF_MAP.map((row) => row + [...row].reverse().join("").replace(/a/g, "b").replace(/A/g, "B"));
+const BLOCKS = { "#": 4, "=": 2, "+": 1 };
+const BOT_NAMES = ["Splotch", "Drip", "Blot", "Smudge", "Squirt", "Dab", "Speckle", "Swash", "Spritz", "Fleck"];
+const COLORS = ["#ffd23f", "#4ee08a", "#ff5fa2", "#b26bff", "#2ee6d6", "#ffffff", "#ff4d4d", "#9dff3f"]; // personal colors: your paint tank
+
+// ── CONNECTION ──────────────────────────────────────────────────────────────────────
+// The builder fills these in for this game. Downloaded from GitHub? Put your own pk_ key here.
+const MP_CONNECT = {
+  key: 'pk_REPLACE_ME',
+  room: 'paint-ctf',
+  endpoint: 'wss://live.multiplayeragent.com',
+  apiUrl: 'https://api.multiplayeragent.com',
+};
+const ATTRACT = new URLSearchParams(location.search).has("attract");
+
+/** Same shape as the SDK client, kept in this tab: offline play and ?attract. */
+function localRoom() {
+  const id = "local", state = { entities: { players: { [id]: {} } }, shared: {} }, subs = [];
+  let queued = false;
+  const emit = () => { if (!queued) { queued = true; queueMicrotask(() => { queued = false; subs.forEach((f) => f(state)); }); } };
+  const put = (o, k, v) => { if (typeof k === "object") Object.assign(o, k); else o[k] = v; emit(); };
+  return {
+    sessionId: id, state, offline: true,
+    me: { set: (k, v) => put(state.entities.players[id], k, v) },
+    setShared: (k, v) => put(state.shared, k, v),
+    onState: (f) => { subs.push(f); f(state); }, onJoin() {}, onLeave() {}, on() {}, send() {},
+    onDisconnect() {}, onReconnect() {}, leave: async () => {},
+  };
+}
+async function connect() {
+  if (ATTRACT || typeof MP === "undefined") return localRoom();
+  try {
+    const mp = await Promise.race([MP.join({ ...MP_CONNECT }), new Promise((_, no) => setTimeout(() => no(new Error("timed out")), 10000))]);
+    window.mp = mp; // the builder calls window.mp.leave() when the page closes
+    return mp;
+  } catch (e) {
+    console.warn("Playing offline:", e && e.message);
+    return localRoom();
+  }
+}
+const parse = (v, fb) => { if (typeof v !== "string") return fb; try { return JSON.parse(v); } catch { return fb; } };
+let net = null, S = { entities: { players: {} }, shared: {} };
+const memo = new Map();
+/** A JSON field, parsed once per change (read-only: never mutate what this returns). */
+function cached(key, raw, fb) { const m = memo.get(key); if (m && m.raw === raw) return m.v; const v = parse(raw, fb); memo.set(key, { raw, v }); return v; }
+const seenHb = new Map();
+function livePlayers() {
+  const now = performance.now(), out = [];
+  for (const [id, p] of Object.entries(S.entities.players || {})) {
+    const s = seenHb.get(id);
+    if (!s || s.hb !== p.hb) seenHb.set(id, { hb: p.hb, at: now });
+    if (id === net.sessionId || now - seenHb.get(id).at < 3000) out.push(id);
+  }
+  return out.sort();
+}
+const isHost = () => livePlayers()[0] === net.sessionId;
+const humans = () => livePlayers().filter((id) => !(ATTRACT && id === net.sessionId));
+
+// ── ARENA ───────────────────────────────────────────────────────────────────────────
+const CELL = 2, MW = MAP[0].length, MH = MAP.length, HEIGHT = [], SPAWNS = [[], []], STANDS = [], OPEN = [];
+MAP.forEach((row, z) => [...row].forEach((ch, x) => {
+  const i = z * MW + x, at = { x: (x + 0.5) * CELL, z: (z + 0.5) * CELL };
+  HEIGHT[i] = BLOCKS[ch] || 0;
+  if (!HEIGHT[i]) OPEN.push(at);
+  if (ch === "a" || ch === "b") SPAWNS[ch === "a" ? 0 : 1].push(at);
+  if (ch === "A" || ch === "B") STANDS[ch === "A" ? 0 : 1] = at;
+}));
+const AW = MW * CELL, AH = MH * CELL, MID = { x: AW / 2, z: AH / 2 };
+const cellH = (cx, cz) => (cx < 0 || cz < 0 || cx >= MW || cz >= MH ? 99 : HEIGHT[cz * MW + cx]);
+const heightAt = (x, z) => cellH(Math.floor(x / CELL), Math.floor(z / CELL));
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(2, devicePixelRatio || 1));
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap; renderer.shadowMap.autoUpdate = false; // blocks never move: draw shadows once
+document.body.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color("#bfe4ff");
+scene.fog = new THREE.Fog("#bfe4ff", 50, 140);
+const camera = new THREE.PerspectiveCamera(70, 1, 0.1, 300);
+let baseFov = 70;
+function fit() { // a tall phone screen gets a wider view, so you still see to the sides
+  renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight;
+  camera.fov = baseFov = Math.min(88, (2 * Math.atan(Math.tan((70 * Math.PI) / 360) * Math.max(1, 1.25 / camera.aspect)) * 180) / Math.PI); camera.updateProjectionMatrix();
+}
+addEventListener("resize", fit); addEventListener("orientationchange", fit); fit();
+scene.add(new THREE.HemisphereLight("#ffffff", "#9aa6d6", 2.0));
+const sun = new THREE.DirectionalLight("#fff1d6", 1.7);
+sun.position.set(MID.x + 18, 44, MID.z + 22); sun.target.position.set(MID.x, 0, MID.z); scene.add(sun, sun.target);
+sun.castShadow = true; sun.shadow.mapSize.set(2048, 1024); sun.shadow.bias = -0.0008;
+Object.assign(sun.shadow.camera, { left: -42, right: 42, top: 26, bottom: -26, near: 5, far: 110 });
+
+function canvasTex(w, h, paint) {
+  const c = document.createElement("canvas"); c.width = w; c.height = h; paint(c.getContext("2d"), w, h);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
+}
+function mulberry32(a) { return () => { a |= 0; a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+const seeded = mulberry32(5);
+const blockTex = canvasTex(64, 64, (c) => {
+  c.fillStyle = "#fff"; c.fillRect(0, 0, 64, 64);
+  for (let i = 0; i < 160; i++) { c.fillStyle = `rgba(0,0,0,${seeded() * 0.03})`; c.fillRect(seeded() * 64, seeded() * 64, 3, 3); }
+  c.strokeStyle = "#0000002a"; c.lineWidth = 4; c.strokeRect(2, 2, 60, 60);
+});
+const crateTex = canvasTex(64, 64, (c) => {
+  c.fillStyle = "#fff"; c.fillRect(0, 0, 64, 64); c.strokeStyle = "#0000003a"; c.lineWidth = 6; c.strokeRect(3, 3, 58, 58);
+  c.beginPath(); c.moveTo(6, 58); c.lineTo(58, 6); c.stroke();
+});
+const cubes = [], crates = [];
+MAP.forEach((row, z) => [...row].forEach((ch, x) => {
+  if (ch === "+") crates.push({ x, z });
+  else for (let k = 0; k < (BLOCKS[ch] || 0) / CELL; k++) cubes.push({ x, z, k, ch, side: x < MW / 2 ? 0 : 1 });
+}));
+/** The color of one wall cube: outer walls cream, pillars pale, low walls in their side's team color. */
+function cubeColor(b) {
+  const outer = !b.x || !b.z || b.x === MW - 1 || b.z === MH - 1;
+  if (b.ch === "=") return b.side ? "#9cc4ff" : "#ffbe8a";
+  return outer ? ((b.x + b.z + b.k) % 2 ? "#f6f2ea" : "#ece6da") : ((b.x + b.z + b.k) % 2 ? "#e6e8f3" : "#d8dcec");
+}
+const mtx = new THREE.Matrix4(), col = new THREE.Color();
+const cubeMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(CELL, CELL, CELL), new THREE.MeshStandardMaterial({ map: blockTex, roughness: 0.9 }), cubes.length);
+cubes.forEach((b, i) => { cubeMesh.setMatrixAt(i, mtx.makeTranslation((b.x + 0.5) * CELL, b.k * CELL + 1, (b.z + 0.5) * CELL)); cubeMesh.setColorAt(i, col.set(cubeColor(b)).offsetHSL(0, 0, (seeded() - 0.5) * 0.04)); });
+const crateMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(CELL, 1, CELL), new THREE.MeshStandardMaterial({ map: crateTex, roughness: 0.8 }), crates.length);
+crates.forEach((b, i) => { crateMesh.setMatrixAt(i, mtx.makeTranslation((b.x + 0.5) * CELL, 0.5, (b.z + 0.5) * CELL)); crateMesh.setColorAt(i, col.set("#ffc95a").offsetHSL(0, 0, (seeded() - 0.5) * 0.06)); });
+for (const m of [cubeMesh, crateMesh]) { m.castShadow = m.receiveShadow = true; scene.add(m); }
+
+// The floor is ONE canvas the paint gets drawn into (PX canvas pixels per world unit).
+const PX = 16, paintCv = document.createElement("canvas");
+paintCv.width = AW * PX; paintCv.height = AH * PX;
+const paint = paintCv.getContext("2d"), floorTex = new THREE.CanvasTexture(paintCv);
+floorTex.colorSpace = THREE.SRGBColorSpace; floorTex.anisotropy = 8;
+let floorDirty = true, floorAt = 0;
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(AW, AH), new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.75 }));
+floor.rotation.x = -Math.PI / 2; floor.position.set(MID.x, 0, MID.z); floor.receiveShadow = true; scene.add(floor);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(700, 700), new THREE.MeshBasicMaterial({ color: "#a9d98f" }));
+ground.rotation.x = -Math.PI / 2; ground.position.set(MID.x, -0.05, MID.z); scene.add(ground);
+/** A clean floor: tiles, the half-way line and a ring round each stand (where you bring the flag). */
+function washFloor() {
+  const c = paint; c.globalAlpha = 1;
+  c.fillStyle = "#f4f0e8"; c.fillRect(0, 0, paintCv.width, paintCv.height);
+  c.fillStyle = "#ebe6da";
+  for (let z = 0; z < MH; z++) for (let x = 0; x < MW; x++) if ((x + z) % 2) c.fillRect(x * CELL * PX, z * CELL * PX, CELL * PX, CELL * PX);
+  c.fillStyle = "#d9d2c3"; c.fillRect(AW * PX / 2 - 3, 0, 6, paintCv.height);
+  for (const t of [0, 1]) {
+    c.strokeStyle = TEAMS[t].color; c.lineWidth = 7; c.setLineDash([18, 10]);
+    c.beginPath(); c.arc(STANDS[t].x * PX, STANDS[t].z * PX, CONFIG.capRadius * PX, 0, Math.PI * 2); c.stroke(); c.setLineDash([]);
+  }
+  floorDirty = true;
+}
+washFloor();
+renderer.shadowMap.needsUpdate = true;
+
+// ── PHYSICS ─────────────────────────────────────────────────────────────────────────
+const R = 0.4, PH = 1.9, EYE = 1.6; // body radius, hit box height, eye height
+/** Calls f(height) for every block cell under a body's footprint at (x, z). */
+function footprint(x, z, f) {
+  for (let cx = Math.floor((x - R) / CELL); cx <= Math.floor((x + R) / CELL); cx++)
+    for (let cz = Math.floor((z - R) / CELL); cz <= Math.floor((z + R) / CELL); cz++) f(cellH(cx, cz));
+}
+function blocked(x, z, y) { let hit = false; footprint(x, z, (h) => { if (h > y + 0.05) hit = true; }); return hit; }
+function groundUnder(x, z) { let g = 0; footprint(x, z, (h) => { g = Math.max(g, h); }); return g; }
+/** Move a body (you or a bot) by (dx, dz) with gravity, jumping and block collisions. */
+function moveBody(b, dx, dz, dt) {
+  if (!blocked(b.x + dx, b.z, b.y)) b.x += dx;
+  if (!blocked(b.x, b.z + dz, b.y)) b.z += dz;
+  b.vy -= CONFIG.gravity * dt; b.y += b.vy * dt;
+  const g = groundUnder(b.x, b.z);
+  b.ground = b.y <= g;
+  if (b.ground) { b.y = g; b.vy = 0; }
+}
+const dirOf = (yaw, pitch) => ({ x: Math.sin(yaw) * Math.cos(pitch), y: Math.sin(pitch), z: Math.cos(yaw) * Math.cos(pitch) });
+const angleDiff = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
+/** How far a ray goes before it hits a block or the floor. */
+function rayWall(o, d, max) {
+  for (let t = 0.1; t < max; t += 0.1) { const y = o.y + d.y * t; if (y <= 0 || y < heightAt(o.x + d.x * t, o.z + d.z * t)) return t; }
+  return max;
+}
+/** Distance along a ray to a fighter's hit box (feet at b.y), or -1 for a miss. */
+function rayBody(o, d, b) {
+  let t0 = 0, t1 = Infinity;
+  for (const [oa, da, lo, hi] of [[o.x, d.x, b.x - R, b.x + R], [o.y, d.y, b.y, b.y + PH], [o.z, d.z, b.z - R, b.z + R]]) {
+    if (Math.abs(da) < 1e-9) { if (oa < lo || oa > hi) return -1; continue; }
+    let ta = (lo - oa) / da, tb = (hi - oa) / da; if (ta > tb) [ta, tb] = [tb, ta];
+    t0 = Math.max(t0, ta); t1 = Math.min(t1, tb); if (t0 > t1) return -1;
+  }
+  return t0;
+}
+/** Where a ray first hits a block, the floor or one of `targets`. */
+function traceRay(o, d, max, targets) {
+  let best = rayWall(o, d, max);
+  for (const b of targets) { const t = rayBody(o, d, b); if (t >= 0 && t < best) best = t; }
+  return { x: o.x + d.x * best, y: o.y + d.y * best, z: o.z + d.z * best };
+}
+const canSee = (a, b) => { const dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z, d = Math.hypot(dx, dy, dz); return rayWall(a, { x: dx / d, y: dy / d, z: dz / d }, d) >= d - 0.2; };
+
+// ── FIGHTERS ────────────────────────────────────────────────────────────────────────
+const GEO = {
+  leg: new THREE.BoxGeometry(0.27, 0.8, 0.32).translate(0, -0.4, 0), body: new THREE.BoxGeometry(0.72, 0.64, 0.44),
+  head: new THREE.BoxGeometry(0.5, 0.48, 0.48).translate(0, 0.24, 0), visor: new THREE.BoxGeometry(0.42, 0.14, 0.05),
+  tank: new THREE.CylinderGeometry(0.17, 0.17, 0.56, 12), gun: new THREE.BoxGeometry(0.17, 0.2, 0.55).translate(0, 0, 0.26),
+  nozzle: new THREE.CylinderGeometry(0.07, 0.1, 0.24, 10).rotateX(Math.PI / 2).translate(0, 0, 0.64), blob: new THREE.CircleGeometry(0.55, 16).rotateX(-Math.PI / 2),
+};
+const darkMat = new THREE.MeshStandardMaterial({ color: "#232838" }), blobMat = new THREE.MeshBasicMaterial({ color: "#000", transparent: true, opacity: 0.22, depthWrite: false });
+/** A paint soldier: body in the team color, the paint tank on its back in its own color. */
+function makeFighter(team, accent, name) {
+  const tc = team >= 0 ? TEAMS[team].color : "#b8bccb", g = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({ color: tc, roughness: 0.55 }), legMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(tc).multiplyScalar(0.55) });
+  const tankMat = new THREE.MeshStandardMaterial({ color: accent, roughness: 0.3, emissive: accent, emissiveIntensity: 0.15 });
+  const add = (geo, m, x, y, z, parent = g) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.castShadow = true; parent.add(o); return o; };
+  const legs = [-0.16, 0.16].map((x) => { const hip = new THREE.Group(); hip.position.set(x, 0.8, 0); g.add(hip); add(GEO.leg, legMat, 0, 0, 0, hip); return hip; });
+  add(GEO.body, mat, 0, 1.12, 0);
+  add(GEO.tank, tankMat, 0, 1.18, -0.33);
+  const head = new THREE.Group(); head.position.y = 1.44; g.add(head); add(GEO.head, mat, 0, 0, 0, head); add(GEO.visor, darkMat, 0, 0.27, 0.245, head);
+  const arm = new THREE.Group(); arm.position.set(-0.36, 1.26, 0.06); g.add(arm); add(GEO.gun, darkMat, 0, 0, 0, arm); add(GEO.nozzle, tankMat, 0, 0, 0, arm);
+  const blob = add(GEO.blob, blobMat, 0, 0.02, 0); blob.castShadow = false;
+  if (name) {
+    const tex = canvasTex(256, 64, (c) => { c.font = "bold 34px system-ui"; c.textAlign = "center"; c.lineWidth = 7; c.strokeStyle = tc; c.strokeText(name, 128, 44); c.fillStyle = "#fff"; c.fillText(name, 128, 44); });
+    const tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false })); tag.scale.set(2.4, 0.6, 1); tag.position.y = 2.4; g.add(tag);
+  }
+  scene.add(g); return { g, legs, head, arm, blob, team, accent };
+}
+/** Where a fighter's blaster nozzle is (the gun sits on its right side). */
+const muzzleOf = (v) => {
+  const rx = -Math.cos(v.yaw), rz = Math.sin(v.yaw), d = dirOf(v.yaw, v.pitch);
+  return { x: v.x + rx * 0.36 + d.x * 0.76, y: v.y + 1.26 + d.y * 0.76, z: v.z + rz * 0.36 + d.z * 0.76 };
+};
+/** Pose a fighter model: position, facing, aim, walking legs. */
+function pose(f, v, speed, dt) {
+  v.walk = (v.walk || 0) + speed * dt * 2.4;
+  const swing = Math.sin(v.walk) * 0.8 * Math.min(1, speed / 4);
+  f.legs[0].rotation.x = swing; f.legs[1].rotation.x = -swing;
+  f.g.position.set(v.x, v.y, v.z); f.g.rotation.y = v.yaw;
+  f.head.rotation.x = -v.pitch * 0.5; f.arm.rotation.x = -v.pitch;
+  f.blob.position.y = groundUnder(v.x, v.z) - v.y + 0.02;
+}
+
+const views = new Map(); // id -> drawn fighter for everyone but me: { f, x, y, z, yaw, pitch, alive, bot, team, seq, shotAt }
+/** Ease a drawn fighter toward the state `s` ({x, y, z, w: yaw, t: pitch, a: alive, s: shot count, v: shot velocity}). */
+function placeView(id, team, accent, name, s, bot, dt) {
+  let v = views.get(id);
+  if (v && (v.f.team !== team || v.f.accent !== accent)) { scene.remove(v.f.g); views.delete(id); v = null; } // changed team or color
+  if (!v) { v = { id, f: makeFighter(team, accent, ATTRACT ? "" : name), x: s.x, y: s.y, z: s.z, yaw: s.w, pitch: s.t, alive: !!s.a, bot, team, seq: s.s, shotAt: 0 }; views.set(id, v); }
+  if (s.a && !v.alive) Object.assign(v, { x: s.x, y: s.y, z: s.z }); // respawned: jump there, don't slide
+  if (!s.a && v.alive) splatFx(v.x, v.y, v.z, team);
+  v.alive = !!s.a;
+  const k = 1 - Math.exp(-dt * 14), ox = v.x, oz = v.z;
+  v.x += (s.x - v.x) * k; v.y += (s.y - v.y) * k; v.z += (s.z - v.z) * k;
+  v.yaw += angleDiff(s.w, v.yaw) * k; v.pitch += (s.t - v.pitch) * k;
+  if (bot && s.s !== v.seq) { // a bot fired: the host flies the real ball, everyone else a look-alike
+    v.seq = s.s; v.shotAt = performance.now();
+    if (!isHost() && v.alive && Array.isArray(s.v)) { launchBall(muzzleOf(v), s.v, team, id, false); sfx("shot", v); }
+  }
+  v.f.g.visible = v.alive;
+  pose(v.f, v, Math.hypot(v.x - ox, v.z - oz) / Math.max(dt, 1e-3), dt);
+}
+function syncViews(m, dt) {
+  const seen = new Set();
+  for (const [id, p] of Object.entries(S.entities.players || {})) {
+    if (id === net.sessionId) continue;
+    const s = cached("p:" + id, p.p, null), team = teamOf(id, m); if (!s || team < 0) continue;
+    seen.add(id); placeView(id, team, p.c || "#fff", p.n || "Player", s, false, dt);
+  }
+  for (const b of botList()) { seen.add(b.i); placeView(b.i, b.t, b.c, b.n, b, true, dt); }
+  for (const [id, v] of views) if (!seen.has(id)) { scene.remove(v.f.g); views.delete(id); }
+}
+/** Everyone who can be painted right now, as drawn on this screen: { id, team, x, y, z }. */
+function fighters() {
+  const out = [];
+  if (me.alive && me.team >= 0) out.push({ id: net.sessionId, team: me.team, x: me.x, y: me.y, z: me.z });
+  for (const [id, v] of views) if (v.alive) out.push({ id, team: v.team, x: v.x, y: v.y, z: v.z });
+  return out;
+}
+function teamOf(id, m) {
+  const b = botList().find((x) => x.i === id);
+  if (b) return b.t;
+  const t = m && m.tm ? m.tm[id] : undefined;
+  return t === 0 || t === 1 ? t : -1;
+}
+function nameOf(id) {
+  if (id === net.sessionId) return myName;
+  const b = botList().find((x) => x.i === id);
+  return String(b ? b.n : (S.entities.players[id] || {}).n || "Player");
+}
+
+// ── FLAGS ───────────────────────────────────────────────────────────────────────────
+const flagModels = [0, 1].map((t) => {
+  const color = TEAMS[t].color, g = new THREE.Group();
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 2.4, 8), new THREE.MeshStandardMaterial({ color: "#f2f2f2" })); pole.position.y = 1.2; g.add(pole);
+  const knob = new THREE.Mesh(new THREE.SphereGeometry(0.13, 12, 8), new THREE.MeshStandardMaterial({ color: "#ffd23f", metalness: 0.4, roughness: 0.3 })); knob.position.y = 2.42; g.add(knob);
+  const cloth = new THREE.Mesh(new THREE.BoxGeometry(1, 0.66, 0.05, 6, 1, 1).translate(0.5, 0, 0), new THREE.MeshStandardMaterial({ color, roughness: 0.6, emissive: color, emissiveIntensity: 0.15 }));
+  cloth.position.y = 2.0; g.add(cloth);
+  for (const o of g.children) o.castShadow = true;
+  scene.add(g);
+  const stand = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.45, 0.24, 28), new THREE.MeshStandardMaterial({ color, roughness: 0.5 }));
+  stand.position.set(STANDS[t].x, 0.12, STANDS[t].z); stand.receiveShadow = true; scene.add(stand);
+  const tex = canvasTex(128, 128, (c) => {
+    c.fillStyle = "#fff"; c.beginPath(); c.arc(64, 64, 52, 0, Math.PI * 2); c.fill();
+    c.fillStyle = color; c.beginPath(); c.arc(64, 64, 44, 0, Math.PI * 2); c.fill();
+    c.fillStyle = "#fff"; c.fillRect(44, 32, 7, 64); c.beginPath(); c.moveTo(51, 32); c.lineTo(88, 46); c.lineTo(51, 62); c.fill();
+  });
+  const beacon = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, sizeAttenuation: false }));
+  beacon.scale.set(0.055, 0.055, 1); beacon.renderOrder = 5; scene.add(beacon);
+  return { g, cloth, beacon };
+});
+/** Where flag `t` is right now on this screen. A carried flag rides on its carrier's back. */
+function flagSpot(m, t) {
+  const f = m.fl[t];
+  if (f.s === 1) {
+    const c = f.by === net.sessionId ? (me.alive ? me : null) : views.get(f.by);
+    if (c && c.alive !== false) return { x: c.x - Math.sin(c.yaw) * 0.45, y: c.y + 0.6, z: c.z - Math.cos(c.yaw) * 0.45, carried: true };
+  }
+  if (f.s === 2) return { x: f.x, y: groundUnder(f.x, f.z), z: f.z };
+  return { x: STANDS[t].x, y: 0.24, z: STANDS[t].z };
+}
+function drawFlags(m, now) {
+  for (const t of [0, 1]) {
+    const at = flagSpot(m, t), fm = flagModels[t], s = at.carried ? 0.75 : 1;
+    fm.g.position.set(at.x, at.y, at.z); fm.g.scale.setScalar(s); fm.g.rotation.y = now / 1400 + t * 3;
+    fm.cloth.rotation.y = Math.sin(now / 180 + t) * 0.35; fm.cloth.scale.x = 0.9 + Math.sin(now / 130) * 0.1;
+    const pulse = m.fl[t].s ? 1 + Math.sin(now / 120) * 0.15 : 1;
+    fm.beacon.position.set(at.x, at.y + 3.1 * s, at.z); fm.beacon.scale.set(0.055 * pulse, 0.055 * pulse, 1);
+    fm.beacon.visible = !ATTRACT;
+  }
+}
+
+// ── PAINT & FX ──────────────────────────────────────────────────────────────────────
+/** A blobby paint splat with droplets, drawn into a 2D canvas. */
+function drawBlob(c, x, y, r, rnd) {
+  const pts = [], n = 11;
+  for (let i = 0; i < n; i++) { const a = (i / n) * Math.PI * 2, rr = r * (0.7 + rnd() * 0.45); pts.push([x + Math.cos(a) * rr, y + Math.sin(a) * rr]); }
+  c.beginPath();
+  for (let i = 0; i <= n; i++) {
+    const p = pts[i % n], q = pts[(i + 1) % n], mx = (p[0] + q[0]) / 2, my = (p[1] + q[1]) / 2;
+    if (!i) c.moveTo(mx, my); else c.quadraticCurveTo(p[0], p[1], mx, my);
+  }
+  c.fill();
+  for (let k = 0; k < 7; k++) { const a = rnd() * Math.PI * 2, d = r * (0.95 + rnd() * 0.75), dr = r * (0.07 + rnd() * 0.17); c.beginPath(); c.arc(x + Math.cos(a) * d, y + Math.sin(a) * d, dr, 0, Math.PI * 2); c.fill(); }
+}
+function splatFloor(x, z, color, r) {
+  if (x < 0 || z < 0 || x > AW || z > AH) return;
+  paint.fillStyle = color; paint.globalAlpha = 0.93; drawBlob(paint, x * PX, z * PX, r * PX, Math.random); paint.globalAlpha = 1;
+  floorDirty = true;
+}
+// Splats on walls and crate tops: flat decals, recycled oldest first.
+const DMAX = 360, splatTex = canvasTex(128, 128, (c) => { c.fillStyle = "#fff"; drawBlob(c, 64, 64, 36, Math.random); });
+const decals = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshStandardMaterial({ map: splatTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, roughness: 0.5 }), DMAX);
+decals.count = 0; decals.frustumCulled = false; for (let i = 0; i < DMAX; i++) decals.setColorAt(i, col.set("#fff")); scene.add(decals);
+let nextDecal = 0;
+const qa = new THREE.Quaternion(), qb = new THREE.Quaternion(), ZV = new THREE.Vector3(0, 0, 1), nv = new THREE.Vector3(), pv = new THREE.Vector3(), sv = new THREE.Vector3();
+function addDecal(x, y, z, n, color, size) {
+  nv.set(n[0], n[1], n[2]); qa.setFromUnitVectors(ZV, nv); qb.setFromAxisAngle(ZV, Math.random() * 6.28); qa.multiply(qb);
+  pv.set(x + n[0] * 0.02, y + n[1] * 0.02, z + n[2] * 0.02); sv.set(size, size, 1);
+  decals.setMatrixAt(nextDecal, mtx.compose(pv, qa, sv)); decals.setColorAt(nextDecal, col.set(color));
+  nextDecal = (nextDecal + 1) % DMAX; decals.count = Math.min(DMAX, decals.count + 1);
+  decals.instanceMatrix.needsUpdate = true; decals.instanceColor.needsUpdate = true;
+}
+
+// Paint balls. `decides`: this screen owns the ball (its shooter, or the host for a bot) and
+// checks it against fighters; everyone else's copy only splats.
+const BMAX = 160, balls = [];
+const ballMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.17, 10, 8), new THREE.MeshStandardMaterial({ roughness: 0.25 }), BMAX);
+ballMesh.count = 0; ballMesh.frustumCulled = false; for (let i = 0; i < BMAX; i++) ballMesh.setColorAt(i, col.set("#fff")); scene.add(ballMesh);
+function launchBall(o, v, team, owner, decides) {
+  balls.push({ x: o.x, y: o.y, z: o.z, vx: v[0], vy: v[1], vz: v[2], team, owner, decides, dist: 0 });
+  if (balls.length > BMAX) balls.shift();
+}
+/** The velocity that lands a ball from `o` on point `p` (it drops a little on the way). */
+function launchVel(o, p, spread) {
+  const dx = p.x - o.x, dy = p.y - o.y, dz = p.z - o.z, t = (Math.hypot(dx, dy, dz) || 1) / CONFIG.ballSpeed;
+  const w = () => (Math.random() - 0.5) * 2 * spread * CONFIG.ballSpeed, r = (n) => Math.round(n * 100) / 100;
+  return [r(dx / t + w()), r(dy / t + 0.5 * CONFIG.ballGravity * t + w()), r(dz / t + w())];
+}
+function tickBalls(dt, targets) {
+  for (let i = balls.length - 1; i >= 0; i--) {
+    const b = balls[i], steps = Math.max(1, Math.ceil((Math.hypot(b.vx, b.vy, b.vz) * dt) / 0.25)), h = dt / steps;
+    let done = false;
+    for (let s = 0; s < steps && !done; s++) {
+      const px = b.x, py = b.y, pz = b.z;
+      b.vy -= CONFIG.ballGravity * h; b.x += b.vx * h; b.y += b.vy * h; b.z += b.vz * h; b.dist += Math.hypot(b.vx, b.vy, b.vz) * h;
+      if (b.y <= heightAt(b.x, b.z)) { hitWorld(b, px, py, pz); done = true; break; }
+      for (const f of targets) {
+        if (f.team === b.team || Math.abs(b.x - f.x) > R + 0.12 || Math.abs(b.z - f.z) > R + 0.12 || b.y < f.y || b.y > f.y + PH) continue;
+        burst(b.x, b.y, b.z, TEAMS[b.team].color, 10, 4, true); sfx("splat", b);
+        if (b.decides) { damage(f.id, CONFIG.dmg, b.owner); if (b.owner === net.sessionId) hitMarker(); }
+        done = true; break;
+      }
+      if (b.dist > CONFIG.range * 1.6) done = true;
+    }
+    if (done) balls.splice(i, 1);
+  }
+  balls.forEach((b, i) => { ballMesh.setMatrixAt(i, mtx.makeTranslation(b.x, b.y, b.z)); ballMesh.setColorAt(i, col.set(TEAMS[b.team].color)); });
+  ballMesh.count = balls.length; ballMesh.instanceMatrix.needsUpdate = true; if (ballMesh.instanceColor) ballMesh.instanceColor.needsUpdate = true;
+}
+/** A ball hit the floor, a block top or a block side: leave a splat there. */
+function hitWorld(b, px, py, pz) {
+  const color = TEAMS[b.team].color, g = heightAt(b.x, b.z), size = 1.1 + Math.random() * 0.7;
+  if (g === 0) splatFloor(b.x, b.z, color, size * 0.55);
+  else if (py >= g - 0.05) addDecal(b.x, g, b.z, [0, 1, 0], color, size);
+  else {
+    const ocx = Math.floor(px / CELL), ncx = Math.floor(b.x / CELL), ocz = Math.floor(pz / CELL), ncz = Math.floor(b.z / CELL);
+    if (ocx !== ncx && heightAt(px, b.z) < b.y) { const fx = (ncx > ocx ? ncx : ncx + 1) * CELL, n = ncx > ocx ? -1 : 1; addDecal(fx, b.y, b.z, [n, 0, 0], color, size); }
+    else if (ocz !== ncz) { const fz = (ncz > ocz ? ncz : ncz + 1) * CELL, n = ncz > ocz ? -1 : 1; addDecal(b.x, b.y, fz, [0, 0, n], color, size); }
+    else if (ocx !== ncx) { const fx = (ncx > ocx ? ncx : ncx + 1) * CELL, n = ncx > ocx ? -1 : 1; addDecal(fx, b.y, b.z, [n, 0, 0], color, size); }
+  }
+  burst(b.x, Math.max(b.y, 0.05), b.z, color, 6, 3, true);
+  if (Math.random() < 0.5) sfx("splat", b);
+}
+/** Someone got splatted: a big burst and a big puddle of their team's paint. */
+function splatFx(x, y, z, team) {
+  const color = team >= 0 ? TEAMS[team].color : "#fff";
+  burst(x, y + 1, z, color, 40, 7, true); if (heightAt(x, z) === 0) splatFloor(x, z, color, 1.6);
+  sfx("frag", { x, z });
+}
+// Particles: little paint drops that leave a dot where they land.
+const PMAX = 600, parts = [];
+const partMesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(0.08, 0), new THREE.MeshBasicMaterial(), PMAX);
+partMesh.frustumCulled = false; for (let i = 0; i < PMAX; i++) partMesh.setColorAt(i, col.set("#fff")); scene.add(partMesh);
+function burst(x, y, z, color, n, speed, paints) {
+  for (let i = 0; i < n; i++) parts.push({ x, y, z, vx: (Math.random() - 0.5) * speed, vy: Math.random() * speed * 0.8, vz: (Math.random() - 0.5) * speed, life: 0.6 + Math.random() * 0.6, color, c: new THREE.Color(color), paints });
+  if (parts.length > PMAX) parts.splice(0, parts.length - PMAX);
+}
+function tickEffects(dt) {
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const p = parts[i]; p.life -= dt; p.vy -= 16 * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
+    const g = heightAt(p.x, p.z);
+    if (p.y < g) {
+      if (p.paints && g === 0) { paint.fillStyle = p.color; paint.beginPath(); paint.arc(p.x * PX, p.z * PX, 1.5 + Math.random() * 2.5, 0, Math.PI * 2); paint.fill(); floorDirty = true; }
+      p.life = 0;
+    }
+    if (p.life <= 0) parts.splice(i, 1);
+  }
+  parts.forEach((p, i) => { const s = Math.min(1, p.life * 2.5); mtx.makeScale(s, s, s).setPosition(p.x, p.y, p.z); partMesh.setMatrixAt(i, mtx); partMesh.setColorAt(i, p.c); });
+  partMesh.count = parts.length; partMesh.instanceMatrix.needsUpdate = true; if (partMesh.instanceColor) partMesh.instanceColor.needsUpdate = true;
+  const now = performance.now();
+  if (floorDirty && now - floorAt > 60) { floorDirty = false; floorAt = now; floorTex.needsUpdate = true; }
+}
+// Sounds, made on the fly with WebAudio (no files). Quieter the farther away they happen.
+let audio = null, noise = null;
+function unlockAudio() {
+  if (audio || ATTRACT) return;
+  try { audio = new AudioContext(); noise = audio.createBuffer(1, audio.sampleRate * 0.3, audio.sampleRate); const d = noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; } catch { audio = null; }
+}
+function sfx(kind, at) {
+  if (!audio) return;
+  const t = audio.currentTime, gain = audio.createGain(), vol = at ? Math.max(0, 1 - Math.hypot(at.x - me.x, at.z - me.z) / 40) * 0.6 : 1;
+  if (vol <= 0.02) return;
+  gain.connect(audio.destination);
+  if (kind === "splat" || kind === "frag") {
+    const src = audio.createBufferSource(), f = audio.createBiquadFilter(), big = kind === "frag"; src.buffer = noise; f.type = "lowpass"; f.frequency.value = big ? 700 : 1200;
+    src.connect(f).connect(gain); gain.gain.setValueAtTime((big ? 0.5 : 0.18) * vol, t); gain.gain.exponentialRampToValueAtTime(0.001, t + (big ? 0.3 : 0.1)); src.start(t); src.stop(t + 0.32); return;
+  }
+  if (kind === "cap") { [523, 659, 784, 1046].forEach((f0, i) => { const o = audio.createOscillator(), g = audio.createGain(); o.type = "triangle"; o.frequency.value = f0; g.gain.setValueAtTime(0.0001, t + i * 0.09); g.gain.exponentialRampToValueAtTime(0.25, t + i * 0.09 + 0.02); g.gain.exponentialRampToValueAtTime(0.001, t + i * 0.09 + 0.4); o.connect(g).connect(audio.destination); o.start(t + i * 0.09); o.stop(t + i * 0.09 + 0.45); }); return; }
+  const o = audio.createOscillator(), [type, f0, f1, len, v] = { shot: ["sine", 620, 240, 0.08, 0.16], hit: ["square", 900, 1300, 0.06, 0.1], hurt: ["sawtooth", 200, 80, 0.18, 0.18], grab: ["triangle", 440, 990, 0.25, 0.25], ret: ["sine", 700, 350, 0.25, 0.22] }[kind];
+  o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + len);
+  gain.gain.setValueAtTime(v * vol, t); gain.gain.exponentialRampToValueAtTime(0.001, t + len); o.connect(gain); o.start(t); o.stop(t + len + 0.02);
+}
+
+// ── MATCH (HOST) ────────────────────────────────────────────────────────────────────
+const host = { bots: new Map(), wasHost: false, last: null, matchId: 0, lastBots: 0, carry: [null, null] };
+/** The match as state has it, or the host's own newer write that hasn't come back yet. `v` only goes up. */
+function match() {
+  const m = cached("match", S.shared.match, null);
+  return host.last && isHost() && (!m || host.last.v > m.v) ? host.last : m;
+}
+function writeMatch(m) { m = { ...m, v: (match()?.v ?? 0) + 1 }; host.last = m; net.setShared("match", JSON.stringify(m)); return m; }
+const homeFlag = (t) => ({ s: 0, by: "", x: STANDS[t].x, z: STANDS[t].z, at: 0 }); // s: 0 on its stand, 1 carried, 2 dropped
+const newMatch = (id, tm) => ({ id, phase: "play", endsAt: Date.now() + CONFIG.matchMs, sc: [0, 0], tm: tm || {}, fl: [homeFlag(0), homeFlag(1)], st: {}, cr: {}, feed: [], res: [], win: -1 });
+const short = (s) => String(s).slice(0, 12);
+/** A player's points from their match stats [captures, returns, splats]. */
+const pointsOf = (s) => (s ? s[0] * CONFIG.points.cap + s[1] * CONFIG.points.ret + s[2] * CONFIG.points.splat : 0);
+function bump(m, id, i) { const st = { ...m.st }, a = (st[id] || [0, 0, 0]).slice(); a[i]++; st[id] = a; return st; }
+/** Add a kill-feed line: [kind, name, team, other name, other team]. kind: s splat, g grab, c capture, r return. */
+const feedAdd = (m, line) => [...m.feed, line].slice(-4);
+
+/** Become host: take over the bots exactly as state has them (the match is already in state). */
+function adopt() {
+  host.wasHost = true; host.bots.clear(); host.carry = [null, null];
+  const now = performance.now();
+  for (const b of parse(S.shared.bots, [])) host.bots.set(b.i, { id: b.i, name: b.n, color: b.c, team: b.t, x: b.x, y: b.y, z: b.z, vy: 0, yaw: b.w, pitch: b.p, hp: CONFIG.hp, alive: !!b.a, respawnAt: now + 1500, shieldUntil: 0, hitAt: 0, path: [], goal: null, target: null, think: 0, nextShot: 0, strafe: 1, strafeAt: 0, stuck: 0, seq: b.s || 0, shot: 0, role: b.r || "attack", spot: null });
+  host.matchId = match()?.id ?? 0;
+}
+/** Put each new player in the team with fewer people; forget players who left. */
+function assignTeams(m) {
+  const people = humans(), tm = {};
+  let changed = false;
+  for (const [id, t] of Object.entries(m.tm || {})) { if (S.entities.players[id]) tm[id] = t; else changed = true; }
+  for (const id of people) {
+    if (tm[id] === 0 || tm[id] === 1) continue;
+    const n = [0, 1].map((t) => people.filter((p) => tm[p] === t).length);
+    tm[id] = n[0] <= n[1] ? 0 : 1; changed = true;
+  }
+  return changed ? writeMatch({ ...m, tm }) : m;
+}
+/** Everyone alive with a team, where THEY say they are (players' own `p`, the host's bots). */
+function bodies(m) {
+  const out = [];
+  if (me.alive && me.team >= 0) out.push({ id: net.sessionId, team: me.team, x: me.x, z: me.z });
+  for (const id of humans()) {
+    if (id === net.sessionId) continue;
+    const p = cached("p:" + id, (S.entities.players[id] || {}).p, null), t = teamOf(id, m);
+    if (p && p.a && t >= 0) out.push({ id, team: t, x: p.x, z: p.z });
+  }
+  for (const b of host.bots.values()) if (b.alive) out.push({ id: b.id, team: b.team, x: b.x, z: b.z });
+  return out;
+}
+/** Flags: take, drop, return and capture, decided from where everyone is. */
+function tickFlags(m) {
+  const people = bodies(m), fl = m.fl.map((f) => ({ ...f })), r = (n) => Math.round(n * 10) / 10;
+  let sc = m.sc, st = m.st, feed = m.feed, changed = false;
+  for (const t of [0, 1]) {
+    const f = fl[t];
+    if (f.s === 1) {
+      const c = people.find((p) => p.id === f.by);
+      if (c) host.carry[t] = { x: c.x, z: c.z };
+      else { // the carrier got splatted or left: the flag drops where it was
+        const at = host.carry[t] || f;
+        Object.assign(f, { s: 2, by: "", x: r(at.x), z: r(at.z), at: Date.now() + CONFIG.flagReturnMs }); changed = true; continue;
+      }
+    }
+    if (f.s === 2 && Date.now() > f.at) { Object.assign(f, homeFlag(t)); changed = true; }
+    if (f.s === 1) continue;
+    for (const p of people) {
+      if (Math.hypot(p.x - f.x, p.z - f.z) > CONFIG.grabRadius) continue;
+      if (p.team !== t) { Object.assign(f, { s: 1, by: p.id }); host.carry[t] = { x: p.x, z: p.z }; feed = feedAdd({ feed }, ["g", short(nameOf(p.id)), p.team, "", t]); changed = true; break; }
+      if (f.s === 2) { Object.assign(f, homeFlag(t)); st = bump({ st }, p.id, 1); feed = feedAdd({ feed }, ["r", short(nameOf(p.id)), p.team, "", t]); changed = true; break; }
+    }
+  }
+  for (const t of [0, 1]) { // a carrier home with its own flag on its stand scores
+    const f = fl[t], c = f.s === 1 && people.find((p) => p.id === f.by);
+    if (!c || fl[c.team].s !== 0 || Math.hypot(c.x - STANDS[c.team].x, c.z - STANDS[c.team].z) > CONFIG.capRadius) continue;
+    Object.assign(f, homeFlag(t)); sc = sc.map((n, i) => (i === c.team ? n + 1 : n));
+    st = bump({ st }, c.id, 0); feed = feedAdd({ feed }, ["c", short(nameOf(c.id)), c.team, "", t]); changed = true;
+  }
+  return changed ? writeMatch({ ...m, fl, sc, st, feed }) : m;
+}
+/** Credit splats on players: their `dth.n` went past what this match has counted (`match.cr`). */
+function creditSplats(m) {
+  let next = m;
+  for (const id of livePlayers()) {
+    const d = id === net.sessionId ? me.dth : cached("dth:" + id, (S.entities.players[id] || {}).dth, null);
+    if (!d || d.m !== m.id || d.n <= (next.cr[id] || 0)) continue;
+    next = { ...addSplat(next, d.by, id), cr: { ...next.cr, [id]: d.n } };
+  }
+  return next !== m ? writeMatch(next) : m;
+}
+function addSplat(m, by, victim) {
+  const st = by && by !== victim ? bump(m, by, 2) : m.st;
+  return { ...m, st, feed: feedAdd(m, ["s", short(nameOf(by)), teamOf(by, m), short(nameOf(victim)), teamOf(victim, m)]) };
+}
+/** Everyone in the match with their points, best first: { id, n, t, p }. */
+function ranking(m) {
+  const out = humans().filter((id) => teamOf(id, m) >= 0).map((id) => ({ id, n: nameOf(id), t: teamOf(id, m), p: pointsOf(m.st[id]) }));
+  for (const b of botList()) out.push({ id: b.i, n: b.n, t: b.t, p: pointsOf(m.st[b.i]) });
+  return out.sort((a, b) => b.p - a.p);
+}
+function hostTick(dt, now) {
+  if (!host.wasHost) adopt();
+  let m = match();
+  if (!m) m = writeMatch(newMatch(1));
+  m = assignTeams(m);
+  const t = Date.now();
+  if (m.phase === "play") {
+    m = creditSplats(m);
+    m = tickFlags(m);
+    if (Math.max(...m.sc) >= CONFIG.capLimit || t > m.endsAt) {
+      const win = m.sc[0] === m.sc[1] ? -1 : m.sc[0] > m.sc[1] ? 0 : 1;
+      m = writeMatch({ ...m, phase: "over", endsAt: t + CONFIG.resultsMs, res: ranking(m).slice(0, 10).map((r) => [r.id, short(r.n), r.t, r.p]), win });
+    }
+  } else if (m.phase === "over") {
+    const people = humans(), ready = people.length && people.every((id) => (id === net.sessionId ? me.ready : (S.entities.players[id] || {}).rdy) === m.id);
+    if (t > m.endsAt || ready) m = writeMatch(newMatch(m.id + 1, m.tm));
+  }
+  if (host.matchId !== m.id) { host.matchId = m.id; host.carry = [null, null]; for (const b of host.bots.values()) spawnBot(b); }
+  tickBots(dt, now, m);
+  if (now - host.lastBots > 100) { host.lastBots = now; net.setShared("bots", JSON.stringify(botList())); }
+}
+
+// ── BOTS (HOST) ─────────────────────────────────────────────────────────────────────
+function botList() {
+  if (!isHost()) return cached("bots", S.shared.bots, []);
+  const r = (n) => Math.round(n * 100) / 100;
+  return [...host.bots.values()].map((b) => ({ i: b.id, n: b.name, c: b.color, t: b.team, r: b.role, x: r(b.x), y: r(b.y), z: r(b.z), w: r(b.yaw), p: r(b.pitch), a: b.alive ? 1 : 0, s: b.seq, v: b.shot }));
+}
+function spawnPoint(team) { const list = SPAWNS[team]; return list[Math.floor(Math.random() * list.length)]; }
+function spawnBot(b) {
+  const s = spawnPoint(b.team);
+  Object.assign(b, { x: s.x, y: 0, z: s.z, vy: 0, yaw: b.team ? -Math.PI / 2 : Math.PI / 2, pitch: 0, hp: CONFIG.hp, alive: true, shieldUntil: performance.now() + CONFIG.shieldMs, hitAt: 0, path: [], goal: null, target: null, think: 0, nextShot: 0, stuck: 0, spot: null });
+}
+/** Bots fill each team up to CONFIG.teamSize. Half attack, half defend. */
+function fillBots(m) {
+  const people = humans().map((id) => teamOf(id, m)), taken = new Set([myColor, ...Object.values(S.entities.players || {}).map((p) => p.c)]);
+  for (const b of host.bots.values()) { // a player took this bot's color: the bot changes
+    if (taken.has(b.color)) b.color = COLORS.find((c) => !taken.has(c)) || b.color;
+    taken.add(b.color);
+  }
+  for (const team of [0, 1]) {
+    const mine = [...host.bots.values()].filter((b) => b.team === team), want = Math.max(0, CONFIG.teamSize - people.filter((t) => t === team).length);
+    while (mine.length > want) host.bots.delete(mine.pop().id);
+    while (mine.length < want) {
+      const all = [...host.bots.values()], used = new Set(all.map((b) => b.name)), colors = new Set([...Object.values(S.entities.players || {}).map((p) => p.c), myColor, ...all.map((b) => b.color)]);
+      const b = { id: "b" + Math.random().toString(36).slice(2, 5), name: BOT_NAMES.find((n) => !used.has(n)) || "Bot", color: COLORS.find((c) => !colors.has(c)) || COLORS[all.length % COLORS.length], team, seq: 0, shot: 0, strafe: 1, strafeAt: 0 };
+      b.role = mine.length % 2 === 0 || (ATTRACT && mine.length < 3) ? "attack" : "defend";
+      spawnBot(b); host.bots.set(b.id, b); mine.push(b);
+    }
+  }
+}
+/** Shortest walk between two cells (breadth-first); a step may climb at most 1 block. */
+function findPath(from, to) {
+  const cell = (p) => Math.floor(p.z / CELL) * MW + Math.floor(p.x / CELL), s = cell(from), g = cell(to), prev = new Map([[s, -1]]), queue = [s];
+  while (queue.length) {
+    const c = queue.shift(); if (c === g) break;
+    const cx = c % MW, cz = Math.floor(c / MW);
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nh = cellH(cx + dx, cz + dz), n = (cz + dz) * MW + cx + dx;
+      if (nh >= 4 || nh > HEIGHT[c] + 1 || prev.has(n)) continue;
+      prev.set(n, c); queue.push(n);
+    }
+  }
+  const out = [];
+  if (prev.has(g)) for (let c = g; c !== s; c = prev.get(c)) out.unshift({ x: (c % MW + 0.5) * CELL, z: (Math.floor(c / MW) + 0.5) * CELL });
+  return out;
+}
+/** Where a bot wants to be: run a flag home, return or chase our flag, attack theirs, or guard. */
+function botGoal(b, m, people) {
+  const ours = m.fl[b.team], theirs = m.fl[1 - b.team], pos = (id) => people.find((p) => p.id === id);
+  if (theirs.s === 1 && theirs.by === b.id) return STANDS[b.team];
+  if (ours.s === 2) return { x: ours.x, z: ours.z };
+  if (ours.s === 1 && pos(ours.by) && (b.role === "defend" || theirs.s === 1)) return pos(ours.by);
+  if (b.role === "attack") {
+    if (theirs.s === 1 && pos(theirs.by)) { const c = pos(theirs.by); return { x: c.x + (b.team ? 3 : -3), z: c.z }; } // escort our carrier
+    return { x: theirs.x, z: theirs.z };
+  }
+  if (!b.spot || Math.hypot(b.x - b.spot.x, b.z - b.spot.z) < 1.5) { // guard: wander between spots near home
+    const near = OPEN.filter((p) => Math.hypot(p.x - STANDS[b.team].x, p.z - STANDS[b.team].z) < 10);
+    b.spot = near[Math.floor(Math.random() * near.length)];
+  }
+  return b.spot;
+}
+function tickBots(dt, now, m) {
+  fillBots(m);
+  const all = fighters(), people = bodies(m);
+  for (const b of host.bots.values()) {
+    if (!b.alive) { if (now > b.respawnAt && m.phase === "play") spawnBot(b); continue; }
+    const eye = { x: b.x, y: b.y + EYE, z: b.z };
+    if (now > b.think) { // look around 3 times a second: the nearest enemy in sight, and where to go
+      b.think = now + 280 + Math.random() * 120;
+      const seen = all.filter((f) => f.team !== b.team && Math.hypot(f.x - b.x, f.z - b.z) < CONFIG.botSight && canSee(eye, { x: f.x, y: f.y + 1.2, z: f.z }))
+        .sort((p, q) => Math.hypot(p.x - b.x, p.z - b.z) - Math.hypot(q.x - b.x, q.z - b.z))[0];
+      if (seen && seen.id !== b.target) b.nextShot = Math.max(b.nextShot, now + 300 + Math.random() * 400); // reaction time
+      b.target = seen ? seen.id : null;
+      const goal = m.phase === "play" ? botGoal(b, m, people) : b;
+      if (!b.goal || !b.path.length || Math.hypot(goal.x - b.goal.x, goal.z - b.goal.z) > 2) { b.goal = { x: goal.x, z: goal.z }; b.path = findPath(b, goal); }
+    }
+    const tgt = b.target && all.find((f) => f.id === b.target);
+    let wx = 0, wz = 0, wantYaw = b.yaw, wantPitch = 0;
+    if (b.path.length) {
+      const p = b.path[0], dx = p.x - b.x, dz = p.z - b.z, d = Math.hypot(dx, dz);
+      if (d < 0.6) b.path.shift(); else { wx = dx / d; wz = dz / d; wantYaw = Math.atan2(dx, dz); }
+      if (heightAt(p.x, p.z) > b.y + 0.1 && b.ground && d < 2.4) b.vy = CONFIG.jump; // climb
+    } else if (b.goal) { const dx = b.goal.x - b.x, dz = b.goal.z - b.z, d = Math.hypot(dx, dz); if (d > 0.8) { wx = dx / d; wz = dz / d; } }
+    if (tgt) { // face the enemy and strafe a little while still heading for the goal
+      const dx = tgt.x - b.x, dz = tgt.z - b.z, d = Math.hypot(dx, dz) || 1;
+      wantYaw = Math.atan2(dx, dz); wantPitch = Math.atan2(tgt.y + 1.1 - eye.y, d);
+      if (now > b.strafeAt) { b.strafe = [-1, 1, 0.6, -0.6][Math.floor(Math.random() * 4)]; b.strafeAt = now + 400 + Math.random() * 800; }
+      wx += (-dz / d) * b.strafe * 0.7; wz += (dx / d) * b.strafe * 0.7;
+    }
+    const carrying = m.fl[1 - b.team].s === 1 && m.fl[1 - b.team].by === b.id;
+    const len = Math.hypot(wx, wz) || 1, sp = CONFIG.speed * 0.82 * (carrying ? CONFIG.carrySlow : 1) * dt, ox = b.x, oz = b.z;
+    moveBody(b, (wx / len) * sp, (wz / len) * sp, dt);
+    b.stuck = (wx || wz) && Math.hypot(b.x - ox, b.z - oz) < sp * 0.2 ? b.stuck + dt : 0;
+    if (b.stuck > 0.6) { b.path = []; b.goal = null; b.stuck = 0; if (b.ground) b.vy = CONFIG.jump; }
+    const turn = CONFIG.botTurn, dy = angleDiff(wantYaw, b.yaw);
+    b.yaw += Math.max(-turn * dt, Math.min(turn * dt, dy)); b.pitch += (wantPitch - b.pitch) * Math.min(1, dt * 6);
+    if (tgt && Math.abs(dy) < 0.3 && now > b.nextShot && m.phase === "play") { // fire, with some error
+      b.nextShot = now + CONFIG.botFireMs * (0.75 + Math.random() * 0.6);
+      const o = muzzleOf(b), d = Math.hypot(tgt.x - b.x, tgt.z - b.z), err = () => (Math.random() + Math.random() - 1) * CONFIG.botAim * d;
+      b.shot = launchVel(o, { x: tgt.x + err(), y: tgt.y + 1.1 + err() * 0.5, z: tgt.z + err() }, 0);
+      b.seq++; launchBall(o, b.shot, b.team, b.id, true);
+    }
+    if (now - b.hitAt > CONFIG.regenAfterMs) b.hp = Math.min(CONFIG.hp, b.hp + CONFIG.regen * dt);
+  }
+}
+function hurtBot(id, dmg, by) {
+  const b = host.bots.get(id), m = match(), now = performance.now();
+  if (!b || !b.alive || !m || m.phase !== "play" || now < b.shieldUntil) return;
+  b.hp -= dmg; b.hitAt = now;
+  if (b.hp <= 0) { b.alive = false; b.respawnAt = now + CONFIG.respawnMs; writeMatch(addSplat(m, by, id)); }
+}
+
+// ── ME ──────────────────────────────────────────────────────────────────────────────
+let myName = "";
+try { myName = localStorage.getItem("mpa-name") || ""; } catch {}
+myName = myName || ["Drippy", "Splashy", "Speedy", "Sneaky", "Jolly", "Zippy"][Math.floor(Math.random() * 6)] + " " + ["Painter", "Blot", "Brush", "Roller", "Splat"][Math.floor(Math.random() * 5)];
+let myColor = COLORS[0]; // picked on join: the first color nobody in the room has
+const me = { joined: false, team: -1, x: MID.x, y: 0, z: MID.z, vy: 0, yaw: 0, pitch: 0, ground: true, hp: CONFIG.hp, alive: false, respawnAt: 0, shieldUntil: 0, hitAt: 0, deaths: 0, dth: null, ready: 0, killer: "", killerId: "", matchId: -1, lastShot: 0, lastSend: 0, lastJson: "", recoil: 0, submitted: -1, model: null, walk: 0 };
+const input = { fwd: 0, back: 0, left: 0, right: 0, jump: false, fire: false, sx: 0, sy: 0 };
+
+function spawnMe() {
+  const s = spawnPoint(me.team);
+  Object.assign(me, { x: s.x, y: 0, z: s.z, vy: 0, yaw: me.team ? -Math.PI / 2 : Math.PI / 2, pitch: -0.1, hp: CONFIG.hp, alive: true, shieldUntil: performance.now() + CONFIG.shieldMs, hitAt: 0 });
+  publish(true);
+}
+function myTick(dt, m, now) {
+  if (me.matchId !== m.id) { // a new match (or we just arrived): wash the floor, respawn, close the results
+    Object.assign(me, { matchId: m.id, deaths: 0, dth: null, ready: 0, killer: "", alive: false, respawnAt: 0 }); $("over").hidden = true;
+    washFloor(); decals.count = 0; nextDecal = 0; if (ATTRACT) prePaint();
+  }
+  me.team = teamOf(net.sessionId, m);
+  if (me.team < 0) { if (me.alive) { me.alive = false; publish(true); } return; }
+  if (!me.alive) { if (me.joined && now > me.respawnAt && m.phase === "play") spawnMe(); return; }
+  let ix = input.right - input.left + input.sx, iz = input.fwd - input.back + input.sy;
+  const l = Math.hypot(ix, iz); if (l > 1) { ix /= l; iz /= l; }
+  const carrying = m.fl[1 - me.team].s === 1 && m.fl[1 - me.team].by === net.sessionId;
+  const fx = Math.sin(me.yaw), fz = Math.cos(me.yaw), sp = CONFIG.speed * (carrying ? CONFIG.carrySlow : 1) * dt, ox = me.x, oz = me.z;
+  if (input.jump && me.ground) me.vy = CONFIG.jump;
+  moveBody(me, (fx * iz - fz * ix) * sp, (fz * iz + fx * ix) * sp, dt);
+  me.speed = Math.hypot(me.x - ox, me.z - oz) / Math.max(dt, 1e-3);
+  if (input.fire && m.phase === "play" && now - me.lastShot > CONFIG.fireMs) fire(now);
+  if (now - me.hitAt > CONFIG.regenAfterMs) me.hp = Math.min(CONFIG.hp, me.hp + CONFIG.regen * dt);
+  publish(false);
+}
+function publish(force) {
+  const now = performance.now();
+  if (!force && now - me.lastSend < 66) return; // ~15/s, and only when something changed
+  const r = (n) => Math.round(n * 100) / 100, json = JSON.stringify({ x: r(me.x), y: r(me.y), z: r(me.z), w: r(me.yaw), t: r(me.pitch), a: me.alive ? 1 : 0, h: Math.max(0, Math.round(me.hp)) });
+  if (json === me.lastJson) return;
+  me.lastSend = now; me.lastJson = json; net.me.set("p", json);
+}
+/** Shoot where the crosshair points: the ray goes out from the CAMERA, the ball from the blaster. */
+function fire(now) {
+  me.lastShot = now; me.recoil = 1;
+  const o = muzzleOf(me), c = camera.position, d = camDir;
+  const aim = traceRay({ x: c.x, y: c.y, z: c.z }, d, CONFIG.range, fighters().filter((f) => f.id !== net.sessionId));
+  const close = Math.hypot(aim.x - o.x, aim.y - o.y, aim.z - o.z) < 1.5;
+  const v = launchVel(o, close ? { x: o.x + d.x * 20, y: o.y + d.y * 20, z: o.z + d.z * 20 } : aim, CONFIG.spread);
+  launchBall(o, v, me.team, net.sessionId, true); sfx("shot");
+  net.send("shot", { o: [o.x, o.y, o.z].map((n) => +n.toFixed(2)), v });
+}
+function hitMarker() { $("cross").classList.add("hit"); setTimeout(() => $("cross").classList.remove("hit"), 120); sfx("hit"); }
+/** Route a hit to whoever owns the victim's health: me, the host (bots), or the victim's browser. */
+function damage(to, dmg, by) {
+  if (to === net.sessionId) hurtMe(dmg, by);
+  else if (isHost() && host.bots.has(to)) hurtBot(to, dmg, by);
+  else net.send("hit", { to, dmg, by });
+}
+function hurtMe(dmg, by) {
+  const m = match(), now = performance.now();
+  if (!me.alive || !m || m.phase !== "play" || now < me.shieldUntil || teamOf(by, m) === me.team) return;
+  me.hp -= dmg; me.hitAt = now; sfx("hurt");
+  const h = $("hurt"); h.style.background = `radial-gradient(circle, transparent 45%, ${TEAMS[1 - me.team].color} 140%)`;
+  h.style.transition = "none"; h.style.opacity = 0.9; requestAnimationFrame(() => { h.style.transition = "opacity .5s"; h.style.opacity = 0; });
+  if (me.hp > 0) return publish(true);
+  me.alive = false; me.deaths++; me.killer = nameOf(by); me.killerId = by; me.respawnAt = now + CONFIG.respawnMs;
+  me.dth = { m: m.id, n: me.deaths, by };
+  net.me.set("dth", JSON.stringify(me.dth));
+  splatFx(me.x, me.y, me.z, me.team);
+  publish(true);
+}
+/** ?attract starts with paint already everywhere, so the first frame looks like a match in full swing. */
+function prePaint() {
+  const rnd = mulberry32(3);
+  for (let i = 0; i < 170; i++) {
+    const p = OPEN[Math.floor(rnd() * OPEN.length)], team = rnd() < p.x / AW ? 1 : 0;
+    paint.fillStyle = TEAMS[team].color; paint.globalAlpha = 0.93; drawBlob(paint, (p.x + (rnd() - 0.5) * 2) * PX, (p.z + (rnd() - 0.5) * 2) * PX, (0.5 + rnd() * 1.1) * PX, rnd);
+  }
+  paint.globalAlpha = 1; floorDirty = true;
+}
+
+// ── HUD & RESULTS ───────────────────────────────────────────────────────────────────
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const clock = (ms) => `${Math.floor(ms / 60000)}:${String(Math.floor((ms % 60000) / 1000)).padStart(2, "0")}`;
+const tname = (t, s) => `<span style="color:${t >= 0 ? TEAMS[t].color : "#fff"};-webkit-text-stroke:.3px #0006">${esc(s)}</span>`;
+let board = null, boardFor = -1, joinedAt = 0, lastFeed = "", lastSc = null, lastFl = null, toastUntil = 0;
+function flagLine(m, t) {
+  const f = m.fl[t];
+  return f.s === 0 ? "flag safe" : f.s === 1 ? `taken by ${esc(short(nameOf(f.by)))}` : `dropped · ${Math.max(0, Math.ceil((f.at - Date.now()) / 1000))}s`;
+}
+function toast(text, color) { $("toast").textContent = text; $("toast").style.color = color; $("toast").classList.add("on"); toastUntil = performance.now() + 1800; }
+/** Effects for flag changes everyone sees in state: grabs, drops, returns, captures. */
+function flagEvents(m) {
+  if (lastSc && lastFl && lastSc.id === m.id) {
+    for (const t of [0, 1]) {
+      if (m.sc[t] > lastSc.sc[t]) { const s = STANDS[t]; burst(s.x, 2, s.z, TEAMS[t].color, 70, 10, true); burst(s.x, 2, s.z, "#ffd23f", 30, 9, false); sfx("cap"); toast(`${TEAMS[t].name} scores!`, TEAMS[t].color); }
+      const was = lastFl[t].s, now = m.fl[t].s;
+      if (was !== 1 && now === 1) { sfx("grab", flagSpot(m, t)); if (m.fl[t].by === net.sessionId) toast("You have the flag!", TEAMS[me.team]?.color || "#fff"); }
+      if (was === 2 && now === 0 && m.sc[1 - t] === lastSc.sc[1 - t]) sfx("ret");
+    }
+  }
+  lastSc = { id: m.id, sc: m.sc }; lastFl = m.fl;
+}
+function hud(m, now) {
+  if (performance.now() > toastUntil) $("toast").classList.remove("on");
+  const feed = m.feed.map(([k, a, ta, b, tb]) => `<div>${tname(ta, a)} ${k === "s" ? `<span style="opacity:.8">splatted</span> ${tname(tb, b)}` : k === "g" ? `took the ${tname(tb, TEAMS[tb].name)} flag` : k === "c" ? `captured the ${tname(tb, TEAMS[tb].name)} flag!` : "returned the flag"}</div>`).join("");
+  if (feed !== lastFeed) $("feed").innerHTML = lastFeed = feed;
+  if (ATTRACT) { for (const id of ["score", "mine", "hp", "msg", "help", "net", "cross", "feed"]) $(id).style.display = "none"; return; }
+  $("score").innerHTML = [0, 1].map((t) => `<div class="team${m.fl[t].s ? " alert" : ""}" style="background:${TEAMS[t].color}"><b>${m.sc[t]}</b><small>⚑ ${flagLine(m, t)}</small></div>`).join(`<div class="clock">${clock(Math.max(0, (m.phase === "play" ? m.endsAt : 0) - Date.now()))}</div>`);
+  const mine = pointsOf(m.st[net.sessionId]);
+  $("mine").innerHTML = me.team >= 0 ? `<b>${mine}</b>points · ${tname(me.team, TEAMS[me.team].name)}<br><span style="opacity:.8">first to ${CONFIG.capLimit} flags</span>` : "";
+  $("hp").innerHTML = me.alive ? `♥ ${Math.max(0, Math.round(me.hp))}<i><b style="width:${Math.max(0, me.hp)}%;background:${me.hp < 35 ? "#ff4d6d" : "#4ee08a"}"></b></i>` : "";
+  $("cross").style.display = me.alive ? "" : "none";
+  const enemy = me.team >= 0 ? 1 - me.team : 0, carrying = me.team >= 0 && m.fl[enemy].s === 1 && m.fl[enemy].by === net.sessionId;
+  $("msg").innerHTML = m.phase !== "play" || !me.joined ? "" : me.team < 0 ? "Joining a team…" : !me.alive && me.killer ? `Splatted by ${esc(me.killer)} · back in ${Math.max(1, Math.ceil((me.respawnAt - now) / 1000))}`
+    : carrying ? (m.fl[me.team].s === 0 ? "Run it home to your stand!" : "Your own flag is gone: get it back to score") : m.fl[me.team].s === 1 ? `${tname(enemy, TEAMS[enemy].name)} has your flag! Splat the carrier` : "";
+  $("help").style.opacity = me.joined && now - joinedAt < 9000 ? 1 : 0;
+  if (me.team >= 0) $("help").innerHTML = `Grab the ${tname(enemy, TEAMS[enemy].name + " ⚑")} flag and bring it to your stand<br><span style="opacity:.85">${touchUI ? "left thumb moves · drag to look · FIRE shoots" : "WASD move · Space jump · click to shoot"}</span>`;
+  const n = livePlayers().length;
+  $("net").textContent = net.offline ? "Offline: playing with bots" : `Online · ${n} player${n === 1 ? "" : "s"}${isHost() ? " · you run the bots" : ""}`;
+  $("start").hidden = m.phase !== "play" || (me.joined && (touchUI || locked || noLock));
+  $("over").hidden = m.phase !== "over";
+  if (m.phase === "over") {
+    if (document.pointerLockElement) document.exitPointerLock();
+    $("winner").innerHTML = m.win < 0 ? "Draw!" : m.win === me.team ? "Your team wins!" : `${tname(m.win, TEAMS[m.win].name)} wins!`;
+    $("results").innerHTML = m.res.map(([id, name, t, p]) => `<li class="${id === net.sessionId ? "me" : ""}"><i style="background:${TEAMS[t] ? TEAMS[t].color : "#fff"}"></i>${esc(name)}<span>${p}</span></li>`).join("");
+    const people = humans(), ready = people.filter((id) => (id === net.sessionId ? me.ready : (S.entities.players[id] || {}).rdy) === m.id).length;
+    $("again").textContent = me.ready === m.id ? `Ready (${ready}/${people.length})` : "Play again";
+    $("next").textContent = `${TEAMS[0].name} ${m.sc[0]} – ${m.sc[1]} ${TEAMS[1].name} · next match in ${Math.max(0, Math.ceil((m.endsAt - Date.now()) / 1000))}s`;
+    if (boardFor !== m.id) { boardFor = m.id; showBoard(m); }
+  }
+}
+function showBoard(m) {
+  const list = $("board"), mine = pointsOf(m.st[net.sessionId]);
+  if (!board) { list.innerHTML = "<li>Leaderboards need a connection.</li>"; return; }
+  list.innerHTML = "<li>Loading…</li>";
+  (mine > 0 && me.submitted !== m.id ? board.submit(mine).catch(() => null) : Promise.resolve()).then(() => board.top(10)).then(({ entries }) => {
+    list.innerHTML = entries.length ? entries.map((e) => `<li>${esc(e.username || "Player")}<span>${e.score}</span></li>`).join("") : "<li>No points yet. Score the first.</li>";
+  }).catch(() => { list.innerHTML = "<li>Couldn't load the leaderboard.</li>"; });
+  me.submitted = m.id;
+}
+$("again").onclick = () => { const m = match(); if (m && m.phase === "over") { me.ready = m.id; net.me.set("rdy", m.id); } };
+
+/** Two players picked the same color at once (the joiner's first state can be empty): the later sessionId picks again. */
+function fixColor() {
+  const others = Object.entries(S.entities.players || {}).filter(([id]) => id !== net.sessionId);
+  if (!others.some(([id, p]) => p.c === myColor && id < net.sessionId)) return;
+  const taken = new Set(others.map(([, p]) => p.c));
+  myColor = COLORS.find((c) => !taken.has(c)) || myColor; net.me.set("c", myColor);
+}
+
+// ── INPUT ───────────────────────────────────────────────────────────────────────────
+const touchUI = matchMedia("(pointer: coarse)").matches && !ATTRACT, cv = renderer.domElement;
+let locked = false, noLock = false;
+$("touch").hidden = !touchUI; $("limit").textContent = CONFIG.capLimit;
+if (touchUI) { $("how").textContent = "Left thumb moves · drag to look · FIRE shoots"; $("play").textContent = "Tap to play"; }
+function look(dx, dy, k) { me.yaw -= dx * k; me.pitch = Math.max(-1.1, Math.min(1.1, me.pitch - dy * k)); }
+const KEYS = { KeyW: "fwd", ArrowUp: "fwd", KeyS: "back", ArrowDown: "back", KeyA: "left", ArrowLeft: "left", KeyD: "right", ArrowRight: "right", Space: "jump" };
+addEventListener("keydown", (e) => { const k = KEYS[e.code]; if (k) { e.preventDefault(); input[k] = k === "jump" ? true : 1; } });
+addEventListener("keyup", (e) => { const k = KEYS[e.code]; if (k) input[k] = k === "jump" ? false : 0; });
+addEventListener("blur", () => Object.assign(input, { fwd: 0, back: 0, left: 0, right: 0, jump: false, fire: false }));
+$("play").onclick = () => {
+  if (!me.joined) { me.joined = true; joinedAt = performance.now(); }
+  unlockAudio(); if (touchUI) return;
+  try { const p = cv.requestPointerLock(); if (p && p.catch) p.catch(() => { noLock = true; }); } catch { noLock = true; } };
+document.addEventListener("pointerlockchange", () => { locked = document.pointerLockElement === cv; if (!locked) input.fire = false; });
+document.addEventListener("pointerlockerror", () => { noLock = true; }); // no pointer lock here: drag with the mouse to look
+addEventListener("mousemove", (e) => { if (locked || (noLock && e.buttons)) look(e.movementX, e.movementY, CONFIG.look); });
+cv.addEventListener("mousedown", (e) => { if (e.button === 0 && (locked || noLock)) input.fire = true; });
+addEventListener("mouseup", () => { input.fire = false; });
+// Touch: a floating stick on the left, drag anywhere else to look; FIRE can be dragged to aim while shooting.
+const touch = { stick: null, look: null, ox: 0, oy: 0, lx: 0, ly: 0 };
+cv.addEventListener("pointerdown", (e) => {
+  if (e.pointerType !== "touch") return;
+  e.preventDefault(); unlockAudio();
+  if (e.clientX < innerWidth * 0.45 && touch.stick === null) { Object.assign(touch, { stick: e.pointerId, ox: e.clientX, oy: e.clientY }); Object.assign($("stick").style, { left: e.clientX + "px", top: e.clientY + "px" }); $("stick").hidden = false; }
+  else if (touch.look === null) Object.assign(touch, { look: e.pointerId, lx: e.clientX, ly: e.clientY });
+});
+addEventListener("pointermove", (e) => {
+  if (e.pointerId === touch.stick) {
+    const dx = e.clientX - touch.ox, dy = e.clientY - touch.oy, d = Math.min(45, Math.hypot(dx, dy)), a = Math.atan2(dy, dx);
+    input.sx = (Math.cos(a) * d) / 45; input.sy = -(Math.sin(a) * d) / 45;
+    $("stick").firstChild.style.transform = `translate(${Math.cos(a) * d}px,${Math.sin(a) * d}px)`;
+  } else if (e.pointerId === touch.look) { look(e.clientX - touch.lx, e.clientY - touch.ly, CONFIG.look * 2.6); touch.lx = e.clientX; touch.ly = e.clientY; }
+});
+for (const ev of ["pointerup", "pointercancel"]) addEventListener(ev, (e) => {
+  if (e.pointerId === touch.stick) { touch.stick = null; input.sx = input.sy = 0; $("stick").hidden = true; $("stick").firstChild.style.transform = ""; }
+  if (e.pointerId === touch.look) touch.look = null;
+});
+for (const [id, key] of [["fire", "fire"], ["jump", "jump"]]) {
+  const b = $(id);
+  b.addEventListener("pointerdown", (e) => { e.preventDefault(); unlockAudio(); input[key] = true; b.classList.add("on"); if (id === "fire" && touch.look === null) Object.assign(touch, { look: e.pointerId, lx: e.clientX, ly: e.clientY }); });
+  for (const ev of ["pointerup", "pointercancel"]) b.addEventListener(ev, () => { input[key] = false; b.classList.remove("on"); });
+}
+document.addEventListener("touchmove", (e) => e.preventDefault(), { passive: false });
+
+// ── MAIN LOOP ───────────────────────────────────────────────────────────────────────
+let last = performance.now(), lastHb = 0, lastHud = 0;
+const camDir = new THREE.Vector3(0, 0, 1);
+const fly = { pos: new THREE.Vector3(MID.x, 26, MID.z + 26), look: new THREE.Vector3(MID.x, 0, MID.z), focus: null, focusAt: 0, yaw: 0 };
+function frame(now) {
+  const dt = Math.max(0, Math.min(0.05, (now - last) / 1000)); last = now; // the first frame can be stamped before `last`
+  if (now - lastHb > 1000) { lastHb = now; net.me.set("hb", Date.now()); fixColor(); }
+  if (isHost()) hostTick(dt, now); else host.wasHost = false;
+  const m = match();
+  if (m) {
+    myTick(dt, m, now);
+    syncViews(m, dt);
+    flagEvents(m);
+    drawFlags(m, now);
+  }
+  tickBalls(dt, fighters());
+  tickEffects(dt);
+  drawMe(dt);
+  if (ATTRACT || !me.joined || me.team < 0) attractCamera(dt, now, m); // the preview, and behind the start card
+  else if (me.alive) thirdPerson();
+  else { // splatted: rise up and watch whoever got you
+    const k = views.get(me.killerId), want = new THREE.Vector3(me.x, me.y + 7, me.z + 0.01);
+    camera.position.lerp(want, 1 - Math.exp(-dt * 3)); camera.lookAt(k ? k.x : me.x, k ? k.y + 1 : me.y, k ? k.z : me.z);
+  }
+  const fov = ATTRACT || !me.joined ? baseFov * 0.85 : baseFov;
+  if (camera.fov !== fov) { camera.fov = fov; camera.updateProjectionMatrix(); }
+  renderer.render(scene, camera);
+  if (m && now - lastHud > 100) { lastHud = now; hud(m, now); }
+  requestAnimationFrame(frame);
+}
+/** My own soldier, drawn straight from my state (no easing). */
+function drawMe(dt) {
+  const accent = myColor;
+  if (me.model && (me.model.team !== me.team || me.model.accent !== accent)) { scene.remove(me.model.g); me.model = null; }
+  if (!me.model) me.model = makeFighter(me.team, accent, "");
+  me.model.g.visible = me.alive;
+  me.recoil = Math.max(0, me.recoil - dt * 9);
+  if (me.alive) { pose(me.model, me, me.speed || 0, dt); me.model.arm.position.z = 0.06 - me.recoil * 0.08; }
+}
+/** Over the right shoulder. The crosshair is the middle of this camera, so shots aim from here. */
+function thirdPerson() {
+  const d = dirOf(me.yaw, me.pitch), rx = -Math.cos(me.yaw), rz = Math.sin(me.yaw), head = { x: me.x, y: me.y + 1.95, z: me.z };
+  const tall = camera.aspect < 1, far = tall ? 6.5 : 5; // a phone held upright sits farther back, so you don't fill the screen
+  const side = Math.max(0, Math.min(tall ? 0.6 : 0.95, rayWall(head, { x: rx, y: 0, z: rz }, 1.3) - 0.35)); // a wall on the right pulls the shoulder in
+  const pivot = { x: head.x + rx * side, y: head.y, z: head.z + rz * side };
+  const back = { x: -d.x, y: -d.y + (tall ? 0.4 : 0.3), z: -d.z }, bl = Math.hypot(back.x, back.y, back.z);
+  const room = Math.max(0.4, Math.min(far, rayWall(pivot, { x: back.x / bl, y: back.y / bl, z: back.z / bl }, far) - 0.3)); // a wall behind pulls the camera in
+  camera.position.set(pivot.x + (back.x / bl) * room, pivot.y + (back.y / bl) * room, pivot.z + (back.z / bl) * room);
+  camDir.set(d.x, d.y, d.z);
+  camera.lookAt(camera.position.x + d.x, camera.position.y + d.y, camera.position.z + d.z);
+  if (me.model) me.model.g.visible = me.alive && room > 1.3; // squeezed against a wall: don't fill the screen with your own back
+}
+/** ?attract (and behind the start card): frames a fighter and its nearest enemy from the side
+ *  (the flag carrier first), or chases it from behind when nobody is near. */
+function attractCamera(dt, now, m) {
+  const alive = [...views.values()].filter((v) => v.alive);
+  if (!alive.length) { camera.position.copy(fly.pos); camera.lookAt(fly.look); return; }
+  const foeOf = (v) => alive.filter((o) => o.team !== v.team).sort((p, q) => Math.hypot(p.x - v.x, p.z - v.z) - Math.hypot(q.x - v.x, q.z - v.z))[0];
+  if (now > fly.focusAt || !views.get(fly.focus)?.alive) {
+    const carrier = m && m.fl.map((f) => f.s === 1 && views.get(f.by)).find((v) => v && v.alive);
+    const busy = alive.filter((v) => now - v.shotAt < 1200 && foeOf(v) && Math.hypot(foeOf(v).x - v.x, foeOf(v).z - v.z) < 16);
+    fly.focus = (carrier && Math.random() < 0.5 ? carrier : busy[Math.floor(Math.random() * busy.length)] || carrier || alive[0]).id;
+    fly.focusAt = now + 3500;
+  }
+  const v = views.get(fly.focus) || alive[0], q = foeOf(v), gap = q ? Math.hypot(q.x - v.x, q.z - v.z) : 99, near = gap < 16;
+  const look = near ? { x: (v.x + q.x) / 2, y: v.y + 1, z: (v.z + q.z) / 2 } : { x: v.x + Math.sin(v.yaw) * 3, y: v.y + 1, z: v.z + Math.cos(v.yaw) * 3 };
+  let base = near ? Math.atan2(q.x - v.x, q.z - v.z) + Math.PI / 2 : v.yaw + Math.PI; // side-on to the fight, or behind
+  if (near && Math.abs(angleDiff(base + Math.PI, fly.yaw)) < Math.abs(angleDiff(base, fly.yaw))) base += Math.PI; // whichever side is nearer
+  fly.yaw += angleDiff(base, fly.yaw) * (1 - Math.exp(-dt * 1.2));
+  const dist = 6.5 + (near ? gap * 0.4 : 0), inside = (n, max) => Math.max(3, Math.min(max - 3, n)); // stay inside the walls
+  const want = { x: inside(look.x + Math.sin(fly.yaw) * dist, AW), y: look.y + 5 + dist * 0.35, z: inside(look.z + Math.cos(fly.yaw) * dist, AH) };
+  fly.pos.lerp(new THREE.Vector3(want.x, want.y, want.z), 1 - Math.exp(-dt * 2)); fly.look.lerp(new THREE.Vector3(look.x, look.y, look.z), 1 - Math.exp(-dt * 3));
+  camera.position.copy(fly.pos); camera.lookAt(fly.look);
+  camDir.set(fly.look.x - fly.pos.x, fly.look.y - fly.pos.y, fly.look.z - fly.pos.z).normalize();
+}
+
+(async function start() {
+  net = await connect();
+  net.onState((st) => { S = st; });
+  net.on("shot", (msg, from) => {
+    if (!msg || !Array.isArray(msg.o) || !Array.isArray(msg.v)) return;
+    const v = views.get(from); if (!v) return;
+    v.shotAt = performance.now(); launchBall({ x: msg.o[0], y: msg.o[1], z: msg.o[2] }, msg.v.map(Number), v.team, from, false); sfx("shot", v);
+  });
+  net.on("hit", (msg, from) => {
+    if (!msg) return;
+    const dmg = Math.min(CONFIG.dmg, Math.max(0, +msg.dmg || 0)), by = msg.by || from;
+    if (msg.to === net.sessionId) hurtMe(dmg, by); else if (isHost() && host.bots.has(msg.to)) hurtBot(msg.to, dmg, by);
+  });
+  net.onDisconnect(() => { $("net").textContent = "Reconnecting…"; });
+  if (!net.offline && typeof MP !== "undefined") board = MP.auth({ key: MP_CONNECT.key, apiUrl: MP_CONNECT.apiUrl }).leaderboard(CONFIG.board);
+  const taken = new Set([...Object.entries(S.entities.players || {}).filter(([id]) => id !== net.sessionId).map(([, p]) => p.c), ...parse(S.shared.bots, []).map((b) => b.c)]);
+  myColor = COLORS.find((c) => !taken.has(c)) || COLORS[Math.floor(Math.random() * COLORS.length)];
+  net.me.set({ n: myName, c: myColor, hb: Date.now() });
+  if (ATTRACT) { $("net").textContent = ""; Object.assign(CONFIG, { capLimit: 99, matchMs: 9e6, respawnMs: 1400, botFireMs: 360, botAim: 0.05, botSight: 34 }); }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
