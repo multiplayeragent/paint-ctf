@@ -37,7 +37,7 @@
   #help { top: 66%; left: 0; right: 0; text-align: center; font-size: 15px; font-weight: 700; padding: 0 16px; transition: opacity 1s; }
   #net { bottom: max(10px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); font-size: 12px; font-weight: 600; opacity: .85; white-space: nowrap; }
   .screen { position: fixed; inset: 0; display: grid; place-items: center; background: #0b1530a0; }
-  .card { width: min(380px, 90vw); max-height: 86vh; overflow: auto; padding: 20px; border-radius: 16px; background: #1a2148; border: 1px solid #ffffff2a; text-align: center; }
+  .card { box-sizing: border-box; width: min(420px, 92vw); max-height: 86vh; overflow: auto; padding: 20px; border-radius: 16px; background: #1a2148; border: 1px solid #ffffff2a; text-align: center; }
   .card h2 { margin: 0 0 6px; font-size: 24px; }
   .card h3 { margin: 14px 0 4px; font-size: 14px; color: #ffd23f; text-align: left; }
   .card ol { margin: 0; padding-left: 24px; font-size: 14px; text-align: left; }
@@ -155,23 +155,24 @@ const TEAMS = [{ name: "Orange", color: "#ff7a1a" }, { name: "Blue", color: "#2f
 // this mirrored, with a→b and A→B, so both sides are always fair.
 // # wall (4 high)  = low wall (2 high)  + crate (1 high, jump on it)  . floor
 // A Orange's flag stand  a an Orange spawn point  (B and b on the mirrored side are Blue's)
+// Keep spawn points 3+ cells from the wall behind them, so the camera has room when you appear.
 const HALF_MAP = [
   "################",
-  "#.a......+......",
-  "#........+...=..",
+  "#........+......",
+  "#...a....+...=..",
   "#.==.........=..",
   "#.....#.........",
   "#.....#.....+...",
-  "#a..........+...",
+  "#...a.......+...",
   "#.........=...++",
   "#..A......=...++",
   "#.........=...++",
-  "#a..........+...",
+  "#...a.......+...",
   "#.....#.....+...",
   "#.....#.........",
   "#.==.........=..",
-  "#........+...=..",
-  "#.a......+......",
+  "#...a....+...=..",
+  "#........+......",
   "################",
 ];
 const MAP = HALF_MAP.map((row) => row + [...row].reverse().join("").replace(/a/g, "b").replace(/A/g, "B"));
@@ -381,13 +382,14 @@ function makeFighter(team, accent, name) {
   const tc = team >= 0 ? TEAMS[team].color : "#b8bccb", g = new THREE.Group();
   const mat = new THREE.MeshStandardMaterial({ color: tc, roughness: 0.55 }), legMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(tc).multiplyScalar(0.55) });
   const tankMat = new THREE.MeshStandardMaterial({ color: accent, roughness: 0.3, emissive: accent, emissiveIntensity: 0.15 });
-  const add = (geo, m, x, y, z, parent = g) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.castShadow = true; parent.add(o); return o; };
+  // No castShadow: the shadow map is drawn once, for the blocks. A soldier gets the round blob under its feet instead.
+  const add = (geo, m, x, y, z, parent = g) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); parent.add(o); return o; };
   const legs = [-0.16, 0.16].map((x) => { const hip = new THREE.Group(); hip.position.set(x, 0.8, 0); g.add(hip); add(GEO.leg, legMat, 0, 0, 0, hip); return hip; });
   add(GEO.body, mat, 0, 1.12, 0);
   add(GEO.tank, tankMat, 0, 1.18, -0.33);
   const head = new THREE.Group(); head.position.y = 1.44; g.add(head); add(GEO.head, mat, 0, 0, 0, head); add(GEO.visor, darkMat, 0, 0.27, 0.245, head);
   const arm = new THREE.Group(); arm.position.set(-0.36, 1.26, 0.06); g.add(arm); add(GEO.gun, darkMat, 0, 0, 0, arm); add(GEO.nozzle, tankMat, 0, 0, 0, arm);
-  const blob = add(GEO.blob, blobMat, 0, 0.02, 0); blob.castShadow = false;
+  const blob = add(GEO.blob, blobMat, 0, 0.02, 0);
   if (name) {
     const tex = canvasTex(256, 64, (c) => { c.font = "bold 34px system-ui"; c.textAlign = "center"; c.lineWidth = 7; c.strokeStyle = tc; c.strokeText(name, 128, 44); c.fillStyle = "#fff"; c.fillText(name, 128, 44); });
     const tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false })); tag.scale.set(2.4, 0.6, 1); tag.position.y = 2.4; g.add(tag);
@@ -410,17 +412,19 @@ function pose(f, v, speed, dt) {
 }
 
 const views = new Map(); // id -> drawn fighter for everyone but me: { f, x, y, z, yaw, pitch, alive, bot, team, seq, shotAt }
-/** Ease a drawn fighter toward the state `s` ({x, y, z, w: yaw, t: pitch, a: alive, s: shot count, v: shot velocity}). */
+/** Ease a drawn fighter toward the state `s`: a player's `p` ({x, y, z, w: yaw, t: pitch, a: alive}) or one
+ *  entry of `bots` (the same, but its pitch is `p` because `t` is its team; plus s: shot count, v: shot velocity). */
 function placeView(id, team, accent, name, s, bot, dt) {
   let v = views.get(id);
+  const pitch = (bot ? s.p : s.t) || 0;
   if (v && (v.f.team !== team || v.f.accent !== accent)) { scene.remove(v.f.g); views.delete(id); v = null; } // changed team or color
-  if (!v) { v = { id, f: makeFighter(team, accent, ATTRACT ? "" : name), x: s.x, y: s.y, z: s.z, yaw: s.w, pitch: s.t, alive: !!s.a, bot, team, seq: s.s, shotAt: 0 }; views.set(id, v); }
+  if (!v) { v = { id, f: makeFighter(team, accent, ATTRACT ? "" : name), x: s.x, y: s.y, z: s.z, yaw: s.w, pitch, alive: !!s.a, bot, team, seq: s.s, shotAt: 0 }; views.set(id, v); }
   if (s.a && !v.alive) Object.assign(v, { x: s.x, y: s.y, z: s.z }); // respawned: jump there, don't slide
   if (!s.a && v.alive) splatFx(v.x, v.y, v.z, team);
   v.alive = !!s.a;
   const k = 1 - Math.exp(-dt * 14), ox = v.x, oz = v.z;
   v.x += (s.x - v.x) * k; v.y += (s.y - v.y) * k; v.z += (s.z - v.z) * k;
-  v.yaw += angleDiff(s.w, v.yaw) * k; v.pitch += (s.t - v.pitch) * k;
+  v.yaw += angleDiff(s.w, v.yaw) * k; v.pitch += (pitch - v.pitch) * k;
   if (bot && s.s !== v.seq) { // a bot fired: the host flies the real ball, everyone else a look-alike
     v.seq = s.s; v.shotAt = performance.now();
     if (!isHost() && v.alive && Array.isArray(s.v)) { launchBall(muzzleOf(v), s.v, team, id, false); sfx("shot", v); }
@@ -429,9 +433,9 @@ function placeView(id, team, accent, name, s, bot, dt) {
   pose(v.f, v, Math.hypot(v.x - ox, v.z - oz) / Math.max(dt, 1e-3), dt);
 }
 function syncViews(m, dt) {
-  const seen = new Set();
+  const seen = new Set(), live = livePlayers();
   for (const [id, p] of Object.entries(S.entities.players || {})) {
-    if (id === net.sessionId) continue;
+    if (id === net.sessionId || !live.includes(id)) continue; // no heartbeat (a closed or frozen tab): not drawn; a bot has its place
     const s = cached("p:" + id, p.p, null), team = teamOf(id, m); if (!s || team < 0) continue;
     seen.add(id); placeView(id, team, p.c || "#fff", p.n || "Player", s, false, dt);
   }
@@ -464,8 +468,7 @@ const flagModels = [0, 1].map((t) => {
   const knob = new THREE.Mesh(new THREE.SphereGeometry(0.13, 12, 8), new THREE.MeshStandardMaterial({ color: "#ffd23f", metalness: 0.4, roughness: 0.3 })); knob.position.y = 2.42; g.add(knob);
   const cloth = new THREE.Mesh(new THREE.BoxGeometry(1, 0.66, 0.05, 6, 1, 1).translate(0.5, 0, 0), new THREE.MeshStandardMaterial({ color, roughness: 0.6, emissive: color, emissiveIntensity: 0.15 }));
   cloth.position.y = 2.0; g.add(cloth);
-  for (const o of g.children) o.castShadow = true;
-  scene.add(g);
+  scene.add(g); // no castShadow (see makeFighter): a flag that moves would leave its shadow behind
   const stand = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.45, 0.24, 28), new THREE.MeshStandardMaterial({ color, roughness: 0.5 }));
   stand.position.set(STANDS[t].x, 0.12, STANDS[t].z); stand.receiveShadow = true; scene.add(stand);
   const tex = canvasTex(128, 128, (c) => {
@@ -568,6 +571,7 @@ function tickBalls(dt, targets) {
 }
 /** A ball hit the floor, a block top or a block side: leave a splat there. */
 function hitWorld(b, px, py, pz) {
+  if (b.x < 0 || b.z < 0 || b.x > AW || b.z > AH) return; // flew out over the outer wall: gone, no splat hanging in the sky
   const color = TEAMS[b.team].color, g = heightAt(b.x, b.z), size = 1.1 + Math.random() * 0.7;
   if (g === 0) splatFloor(b.x, b.z, color, size * 0.55);
   else if (py >= g - 0.05) addDecal(b.x, g, b.z, [0, 1, 0], color, size);
@@ -839,6 +843,7 @@ function tickBots(dt, now, m) {
       if (now > b.strafeAt) { b.strafe = [-1, 1, 0.6, -0.6][Math.floor(Math.random() * 4)]; b.strafeAt = now + 400 + Math.random() * 800; }
       wx += (-dz / d) * b.strafe * 0.7; wz += (dx / d) * b.strafe * 0.7;
     }
+    if (m.phase !== "play") wx = wz = 0; // the results card is up: stand still, like the players
     const carrying = m.fl[1 - b.team].s === 1 && m.fl[1 - b.team].by === b.id;
     const len = Math.hypot(wx, wz) || 1, sp = CONFIG.speed * 0.82 * (carrying ? CONFIG.carrySlow : 1) * dt, ox = b.x, oz = b.z;
     moveBody(b, (wx / len) * sp, (wz / len) * sp, dt);
@@ -883,14 +888,15 @@ function myTick(dt, m, now) {
   me.team = teamOf(net.sessionId, m);
   if (me.team < 0) { if (me.alive) { me.alive = false; publish(true); } return; }
   if (!me.alive) { if (me.joined && now > me.respawnAt && m.phase === "play") spawnMe(); return; }
-  let ix = input.right - input.left + input.sx, iz = input.fwd - input.back + input.sy;
+  const playing = m.phase === "play"; // the results card is up: everyone stands still until the next match
+  let ix = playing ? input.right - input.left + input.sx : 0, iz = playing ? input.fwd - input.back + input.sy : 0;
   const l = Math.hypot(ix, iz); if (l > 1) { ix /= l; iz /= l; }
   const carrying = m.fl[1 - me.team].s === 1 && m.fl[1 - me.team].by === net.sessionId;
   const fx = Math.sin(me.yaw), fz = Math.cos(me.yaw), sp = CONFIG.speed * (carrying ? CONFIG.carrySlow : 1) * dt, ox = me.x, oz = me.z;
-  if (input.jump && me.ground) me.vy = CONFIG.jump;
+  if (input.jump && me.ground && playing) me.vy = CONFIG.jump;
   moveBody(me, (fx * iz - fz * ix) * sp, (fz * iz + fx * ix) * sp, dt);
   me.speed = Math.hypot(me.x - ox, me.z - oz) / Math.max(dt, 1e-3);
-  if (input.fire && m.phase === "play" && now - me.lastShot > CONFIG.fireMs) fire(now);
+  if (input.fire && playing && now - me.lastShot > CONFIG.fireMs) fire(now);
   if (now - me.hitAt > CONFIG.regenAfterMs) me.hp = Math.min(CONFIG.hp, me.hp + CONFIG.regen * dt);
   publish(false);
 }
@@ -949,7 +955,7 @@ const tname = (t, s) => `<span style="color:${t >= 0 ? TEAMS[t].color : "#fff"};
 let board = null, boardFor = -1, joinedAt = 0, lastFeed = "", lastSc = null, lastFl = null, toastUntil = 0;
 function flagLine(m, t) {
   const f = m.fl[t];
-  return f.s === 0 ? "flag safe" : f.s === 1 ? `taken by ${esc(short(nameOf(f.by)))}` : `dropped · ${Math.max(0, Math.ceil((f.at - Date.now()) / 1000))}s`;
+  return f.s === 0 ? "flag safe" : f.s === 1 ? `taken by ${short(nameOf(f.by))}` : `dropped · ${Math.max(0, Math.ceil((f.at - Date.now()) / 1000))}s`;
 }
 function toast(text, color) { $("toast").textContent = text; $("toast").style.color = color; $("toast").classList.add("on"); toastUntil = performance.now() + 1800; }
 /** Effects for flag changes everyone sees in state: grabs, drops, returns, captures. */
@@ -969,7 +975,11 @@ function hud(m, now) {
   const feed = m.feed.map(([k, a, ta, b, tb]) => `<div>${tname(ta, a)} ${k === "s" ? `<span style="opacity:.8">splatted</span> ${tname(tb, b)}` : k === "g" ? `took the ${tname(tb, TEAMS[tb].name)} flag` : k === "c" ? `captured the ${tname(tb, TEAMS[tb].name)} flag!` : "returned the flag"}</div>`).join("");
   if (feed !== lastFeed) $("feed").innerHTML = lastFeed = feed;
   if (ATTRACT) { for (const id of ["score", "mine", "hp", "msg", "help", "net", "cross", "feed"]) $(id).style.display = "none"; return; }
-  $("score").innerHTML = [0, 1].map((t) => `<div class="team${m.fl[t].s ? " alert" : ""}" style="background:${TEAMS[t].color}"><b>${m.sc[t]}</b><small>⚑ ${flagLine(m, t)}</small></div>`).join(`<div class="clock">${clock(Math.max(0, (m.phase === "play" ? m.endsAt : 0) - Date.now()))}</div>`);
+  // The score boxes are made once and then only refilled: rebuilding them would restart the "flag taken" blink every time.
+  if (!$("score").firstChild) $("score").innerHTML = `<div class="team"><b></b><small></small></div><div class="clock"></div><div class="team"><b></b><small></small></div>`;
+  const [box0, clockBox, box1] = $("score").children;
+  [box0, box1].forEach((box, t) => { box.style.background = TEAMS[t].color; box.classList.toggle("alert", m.fl[t].s > 0); box.firstChild.textContent = m.sc[t]; box.lastChild.textContent = "⚑ " + flagLine(m, t); });
+  clockBox.textContent = clock(Math.max(0, (m.phase === "play" ? m.endsAt : 0) - Date.now()));
   const mine = pointsOf(m.st[net.sessionId]);
   $("mine").innerHTML = me.team >= 0 ? `<b>${mine}</b>points · ${tname(me.team, TEAMS[me.team].name)}<br><span style="opacity:.8">first to ${CONFIG.capLimit} flags</span>` : "";
   $("hp").innerHTML = me.alive ? `♥ ${Math.max(0, Math.round(me.hp))}<i><b style="width:${Math.max(0, me.hp)}%;background:${me.hp < 35 ? "#ff4d6d" : "#4ee08a"}"></b></i>` : "";
@@ -984,7 +994,7 @@ function hud(m, now) {
   $("start").hidden = m.phase !== "play" || (me.joined && (touchUI || locked || noLock));
   $("over").hidden = m.phase !== "over";
   if (m.phase === "over") {
-    if (document.pointerLockElement) document.exitPointerLock();
+    if (document.pointerLockElement && me.ready !== m.id) document.exitPointerLock(); // free the mouse to press "Play again"
     $("winner").innerHTML = m.win < 0 ? "Draw!" : m.win === me.team ? "Your team wins!" : `${tname(m.win, TEAMS[m.win].name)} wins!`;
     $("results").innerHTML = m.res.map(([id, name, t, p]) => `<li class="${id === net.sessionId ? "me" : ""}"><i style="background:${TEAMS[t] ? TEAMS[t].color : "#fff"}"></i>${esc(name)}<span>${p}</span></li>`).join("");
     const people = humans(), ready = people.filter((id) => (id === net.sessionId ? me.ready : (S.entities.players[id] || {}).rdy) === m.id).length;
@@ -1002,7 +1012,11 @@ function showBoard(m) {
   }).catch(() => { list.innerHTML = "<li>Couldn't load the leaderboard.</li>"; });
   me.submitted = m.id;
 }
-$("again").onclick = () => { const m = match(); if (m && m.phase === "over") { me.ready = m.id; net.me.set("rdy", m.id); } };
+$("again").onclick = () => {
+  const m = match(); if (!m || m.phase !== "over") return;
+  me.ready = m.id; net.me.set("rdy", m.id);
+  if (me.joined && !touchUI && !noLock) lockMouse(); // straight back into the next match, without the start card
+};
 
 /** Two players picked the same color at once (the joiner's first state can be empty): the later sessionId picks again. */
 function fixColor() {
@@ -1014,7 +1028,7 @@ function fixColor() {
 
 // ── INPUT ───────────────────────────────────────────────────────────────────────────
 const touchUI = matchMedia("(pointer: coarse)").matches && !ATTRACT, cv = renderer.domElement;
-let locked = false, noLock = false;
+let locked = false, noLock = false, everLocked = false;
 $("touch").hidden = !touchUI; $("limit").textContent = CONFIG.capLimit;
 if (touchUI) { $("how").textContent = "Left thumb moves · drag to look · FIRE shoots"; $("play").textContent = "Tap to play"; }
 function look(dx, dy, k) { me.yaw -= dx * k; me.pitch = Math.max(-1.1, Math.min(1.1, me.pitch - dy * k)); }
@@ -1022,12 +1036,18 @@ const KEYS = { KeyW: "fwd", ArrowUp: "fwd", KeyS: "back", ArrowDown: "back", Key
 addEventListener("keydown", (e) => { const k = KEYS[e.code]; if (k) { e.preventDefault(); input[k] = k === "jump" ? true : 1; } });
 addEventListener("keyup", (e) => { const k = KEYS[e.code]; if (k) input[k] = k === "jump" ? false : 0; });
 addEventListener("blur", () => Object.assign(input, { fwd: 0, back: 0, left: 0, right: 0, jump: false, fire: false }));
+/** Lock the mouse to the game. Where that never works (some embedded pages) you drag with the mouse to look instead.
+ *  A failure after it has worked once is only the browser's short wait after Esc: the start card stays up, click again. */
+function lockMouse() {
+  const failed = () => { if (!everLocked) noLock = true; };
+  try { const p = cv.requestPointerLock(); if (p && p.catch) p.catch(failed); } catch { failed(); }
+}
 $("play").onclick = () => {
   if (!me.joined) { me.joined = true; joinedAt = performance.now(); }
-  unlockAudio(); if (touchUI) return;
-  try { const p = cv.requestPointerLock(); if (p && p.catch) p.catch(() => { noLock = true; }); } catch { noLock = true; } };
-document.addEventListener("pointerlockchange", () => { locked = document.pointerLockElement === cv; if (!locked) input.fire = false; });
-document.addEventListener("pointerlockerror", () => { noLock = true; }); // no pointer lock here: drag with the mouse to look
+  unlockAudio(); if (!touchUI) lockMouse(); };
+document.addEventListener("pointerlockchange", () => { locked = document.pointerLockElement === cv; if (locked) everLocked = true; else input.fire = false; });
+document.addEventListener("pointerlockerror", () => { if (!everLocked) noLock = true; });
+addEventListener("contextmenu", (e) => e.preventDefault()); // a right-click must not open the browser menu over the game
 addEventListener("mousemove", (e) => { if (locked || (noLock && e.buttons)) look(e.movementX, e.movementY, CONFIG.look); });
 cv.addEventListener("mousedown", (e) => { if (e.button === 0 && (locked || noLock)) input.fire = true; });
 addEventListener("mouseup", () => { input.fire = false; });
